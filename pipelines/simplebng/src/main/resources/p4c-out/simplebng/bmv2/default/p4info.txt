@@ -1,0 +1,325 @@
+tables {
+  preamble {
+    id: 33614821
+    name: "BngIngress.onos.onos"
+    alias: "onos"
+  }
+  match_fields {
+    id: 1
+    name: "standard_metadata.ingress_port"
+    bitwidth: 9
+    match_type: TERNARY
+  }
+  match_fields {
+    id: 2
+    name: "hdr.ethernet.ether_type"
+    bitwidth: 16
+    match_type: TERNARY
+  }
+  match_fields {
+    id: 3
+    name: "hdr.ipv4.protocol"
+    bitwidth: 8
+    match_type: TERNARY
+  }
+  match_fields {
+    id: 4
+    name: "local_metadata.l4_src_port"
+    bitwidth: 16
+    match_type: TERNARY
+  }
+  match_fields {
+    id: 5
+    name: "local_metadata.l4_dst_port"
+    bitwidth: 16
+    match_type: TERNARY
+  }
+  action_refs {
+    id: 16803545
+  }
+  action_refs {
+    id: 16800567
+    annotations: "@defaultonly()"
+  }
+  direct_resource_ids: 318779232
+  size: 256
+  idle_timeout_behavior: NO_TIMEOUT
+}
+tables {
+  preamble {
+    id: 33599329
+    name: "BngIngress.filter.host_ingress"
+    alias: "host_ingress"
+  }
+  match_fields {
+    id: 1
+    name: "hdr.ethernet.src_addr"
+    bitwidth: 48
+    match_type: EXACT
+  }
+  match_fields {
+    id: 2
+    name: "hdr.ipv4.src_addr"
+    bitwidth: 32
+    match_type: EXACT
+  }
+  action_refs {
+    id: 16826330
+  }
+  const_default_action_id: 16826330
+  size: 50
+  idle_timeout_behavior: NO_TIMEOUT
+}
+tables {
+  preamble {
+    id: 33582640
+    name: "BngIngress.filter.network_ingress"
+    alias: "network_ingress"
+  }
+  match_fields {
+    id: 1
+    name: "standard_metadata.ingress_port"
+    bitwidth: 9
+    match_type: EXACT
+  }
+  action_refs {
+    id: 16808074
+  }
+  action_refs {
+    id: 16800567
+    annotations: "@defaultonly()"
+  }
+  size: 511
+  idle_timeout_behavior: NO_TIMEOUT
+}
+tables {
+  preamble {
+    id: 33587621
+    name: "BngIngress.dataplane_protocols.arp_local_ip"
+    alias: "arp_local_ip"
+  }
+  match_fields {
+    id: 1
+    name: "standard_metadata.ingress_port"
+    bitwidth: 9
+    match_type: TERNARY
+  }
+  match_fields {
+    id: 2
+    name: "hdr.arp_ipv4.tpa"
+    bitwidth: 32
+    match_type: EXACT
+  }
+  action_refs {
+    id: 16806444
+  }
+  action_refs {
+    id: 16800567
+    annotations: "@defaultonly()"
+  }
+  size: 256
+  idle_timeout_behavior: NO_TIMEOUT
+}
+tables {
+  preamble {
+    id: 33619275
+    name: "BngIngress.forwarding.fwd_ipv4_upstream"
+    alias: "fwd_ipv4_upstream"
+  }
+  match_fields {
+    id: 1
+    name: "hdr.ipv4.dst_addr"
+    bitwidth: 32
+    match_type: LPM
+  }
+  action_refs {
+    id: 16796126
+  }
+  action_refs {
+    id: 16784395
+  }
+  size: 1024
+  idle_timeout_behavior: NO_TIMEOUT
+}
+tables {
+  preamble {
+    id: 33584611
+    name: "BngIngress.forwarding.fwd_ipv4_downstream"
+    alias: "fwd_ipv4_downstream"
+  }
+  match_fields {
+    id: 1
+    name: "hdr.ipv4.dst_addr"
+    bitwidth: 32
+    match_type: EXACT
+  }
+  action_refs {
+    id: 16793214
+  }
+  action_refs {
+    id: 16800567
+    annotations: "@defaultonly()"
+  }
+  size: 50
+  idle_timeout_behavior: NO_TIMEOUT
+}
+actions {
+  preamble {
+    id: 16800567
+    name: "NoAction"
+    alias: "NoAction"
+  }
+}
+actions {
+  preamble {
+    id: 16803545
+    name: "BngIngress.onos.send_to_controller"
+    alias: "send_to_controller"
+  }
+}
+actions {
+  preamble {
+    id: 16826330
+    name: "BngIngress.filter.set_forwarding_type"
+    alias: "set_forwarding_type"
+  }
+  params {
+    id: 1
+    name: "fwd_type"
+    bitwidth: 3
+  }
+}
+actions {
+  preamble {
+    id: 16808074
+    name: "BngIngress.filter.forward_to_host"
+    alias: "forward_to_host"
+  }
+}
+actions {
+  preamble {
+    id: 16806444
+    name: "BngIngress.dataplane_protocols.arp_reply"
+    alias: "arp_reply"
+  }
+  params {
+    id: 1
+    name: "new_mac_sa"
+    bitwidth: 48
+  }
+}
+actions {
+  preamble {
+    id: 16784395
+    name: "BngIngress.forwarding.drop_packet"
+    alias: "drop_packet"
+  }
+}
+actions {
+  preamble {
+    id: 16796126
+    name: "BngIngress.forwarding.l3_switch_upstream"
+    alias: "l3_switch_upstream"
+  }
+  params {
+    id: 1
+    name: "port"
+    bitwidth: 9
+  }
+  params {
+    id: 2
+    name: "new_mac_da"
+    bitwidth: 48
+  }
+  params {
+    id: 3
+    name: "new_mac_sa"
+    bitwidth: 48
+  }
+}
+actions {
+  preamble {
+    id: 16793214
+    name: "BngIngress.forwarding.l3_switch_downstream"
+    alias: "l3_switch_downstream"
+  }
+  params {
+    id: 1
+    name: "port"
+    bitwidth: 9
+  }
+  params {
+    id: 2
+    name: "new_mac_da"
+    bitwidth: 48
+  }
+}
+counters {
+  preamble {
+    id: 302007650
+    name: "BngIngress.port_counters.ingress_port_counter"
+    alias: "ingress_port_counter"
+  }
+  spec {
+    unit: PACKETS
+  }
+  size: 511
+}
+counters {
+  preamble {
+    id: 302039529
+    name: "BngEgress.port_counters.egress_port_counter"
+    alias: "egress_port_counter"
+  }
+  spec {
+    unit: PACKETS
+  }
+  size: 511
+}
+direct_counters {
+  preamble {
+    id: 318779232
+    name: "BngIngress.onos.onos_counter"
+    alias: "onos_counter"
+  }
+  spec {
+    unit: BOTH
+  }
+  direct_table_id: 33614821
+}
+controller_packet_metadata {
+  preamble {
+    id: 67166875
+    name: "packet_in"
+    annotations: "@controller_header(\"packet_in\")"
+  }
+  metadata {
+    id: 1
+    name: "ingress_port"
+    bitwidth: 9
+  }
+  metadata {
+    id: 2
+    name: "_padding"
+    bitwidth: 7
+  }
+}
+controller_packet_metadata {
+  preamble {
+    id: 67156943
+    name: "packet_out"
+    annotations: "@controller_header(\"packet_out\")"
+  }
+  metadata {
+    id: 1
+    name: "egress_port"
+    bitwidth: 9
+  }
+  metadata {
+    id: 2
+    name: "_padding"
+    bitwidth: 7
+  }
+}
+type_info {
+}

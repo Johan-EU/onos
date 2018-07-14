@@ -1,0 +1,24 @@
+/*
+ * Copyright 2018-present Johan Boer
+ * This file is part of SD-Access (https://github.com/Johan-EU/sd-access).
+ *
+ * SD-Access is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * SD-Access is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with SD-Access.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+    // Constants that are defined in the P4 but not part of the P4 info file
+    public static final int PORT_FIELD_BITWIDTH = 9;
+    public static final int FWD_DROP        = 0;
+    public static final int FWD_IPV4_ROUTED = 1;
+    public static final int FWD_TUN_BRIDGED = 2;
+    public static final int FWD_TUN_ROUTED  = 3;
