@@ -45,18 +45,13 @@ import org.onosproject.core.CoreService;
 import org.onosproject.dhcp.DhcpService;
 import org.onosproject.dhcp.DhcpStore;
 import org.onosproject.dhcp.IpAssignment;
-import org.onosproject.net.ConnectPoint;
-import org.onosproject.net.Host;
-import org.onosproject.net.HostId;
-import org.onosproject.net.HostLocation;
+import org.onosproject.net.*;
 import org.onosproject.net.config.ConfigFactory;
 import org.onosproject.net.config.NetworkConfigEvent;
 import org.onosproject.net.config.NetworkConfigListener;
 import org.onosproject.net.config.NetworkConfigRegistry;
-import org.onosproject.net.flow.DefaultTrafficSelector;
-import org.onosproject.net.flow.DefaultTrafficTreatment;
-import org.onosproject.net.flow.TrafficSelector;
-import org.onosproject.net.flow.TrafficTreatment;
+import org.onosproject.net.flow.*;
+import org.onosproject.net.flow.criteria.PiCriterion;
 import org.onosproject.net.host.DefaultHostDescription;
 import org.onosproject.net.host.HostProvider;
 import org.onosproject.net.host.HostProviderRegistry;
@@ -66,6 +61,9 @@ import org.onosproject.net.packet.PacketContext;
 import org.onosproject.net.packet.PacketPriority;
 import org.onosproject.net.packet.PacketProcessor;
 import org.onosproject.net.packet.PacketService;
+import org.onosproject.net.pi.model.PiTableId;
+import org.onosproject.net.pi.runtime.PiAction;
+import org.onosproject.net.pi.runtime.PiActionParam;
 import org.onosproject.net.provider.AbstractProvider;
 import org.onosproject.net.provider.ProviderId;
 import org.osgi.service.component.ComponentContext;
@@ -94,6 +92,8 @@ import static org.onosproject.dhcp.IpAssignment.AssignmentStatus.Option_RangeNot
 import static org.onosproject.dhcp.IpAssignment.AssignmentStatus.Option_Requested;
 import static org.onosproject.net.config.basics.SubjectFactories.APP_SUBJECT_FACTORY;
 
+import static org.onosproject.pipelines.simplebng.SimpleBngConstants.*;
+
 /**
  * Skeletal ONOS DHCP Server application.
  */
@@ -103,7 +103,7 @@ public class DhcpManager implements DhcpService {
 
     private static final ProviderId PID = new ProviderId("of", "org.onosproject.dhcp", true);
     private static final String ALLOW_HOST_DISCOVERY = "allowHostDiscovery";
-    private static final boolean DEFAULT_ALLOW_HOST_DISCOVERY = false;
+    private static final boolean DEFAULT_ALLOW_HOST_DISCOVERY = true;
 
     private final Logger log = LoggerFactory.getLogger(getClass());
 
@@ -194,6 +194,7 @@ public class DhcpManager implements DhcpService {
         hostProviderService = null;
         cancelPackets();
         timeout.cancel(true);
+        flowRuleService.removeFlowRulesById(appId);
         log.info("Stopped");
     }
 
@@ -542,6 +543,12 @@ public class DhcpManager implements DhcpService {
 
                     Ethernet ethReply = buildReply(packet, requestedIP, (byte) outgoingPacketType.getValue());
                     sendReply(context, ethReply);
+                    // TODO Change this quick implementation to a proper solution
+                    // Insert flow rules for the assigned IP (should be converted to notification mechanism)
+                    log.info("At end of DHCPREQUEST");
+                    if (outgoingPacketType== DHCP.MsgType.DHCPACK) {
+                        configureHostInDevice(context.inPacket().receivedFrom(), ipAssignment.ipAddress(), hostId.mac());
+                    }
                     break;
                 case DHCPRELEASE:
                     log.trace("DHCP RELEASE received from {}", hostId);
@@ -549,6 +556,8 @@ public class DhcpManager implements DhcpService {
                     if (releaseIp != null) {
                         hostProviderService.removeIpFromHost(hostId, releaseIp);
                     }
+                    // Remove flow rules for the released IP (should be converted to notification mechanism)
+                    // TODO: remove host from P4 pipeline
                     break;
                 default:
                     break;
@@ -751,4 +760,81 @@ public class DhcpManager implements DhcpService {
             timeout = SharedScheduledExecutors.newTimeout(new PurgeListTask(), timerDelay, TimeUnit.MINUTES);
         }
     }
+
+
+    /*
+     ******************************************************
+     **
+     **  Specially for filling tables of P4 pipeline
+     **
+     ******************************************************
+     */
+
+    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
+    private FlowRuleService flowRuleService;
+
+    // Default priority used for flow rules installed by this app.
+    private static final int FLOW_RULE_PRIORITY = 100;
+
+
+    /**
+     * Configure the host IP and MAC in the device the request was received from
+     * @param cp the connection point the DHCP request was received on
+     * @param ip assigned IP address
+     * @param mac MAC address of the host requestin an IP address
+     */
+    private void configureHostInDevice(ConnectPoint cp, Ip4Address ip, MacAddress mac) {
+        log.info("Start configure Host {} with mac address {} in device {}", ip, mac, cp.deviceId());
+        // Insert an entry in the host_ingress filtering table
+        PiCriterion match = PiCriterion.builder()
+                .matchExact(HF_ETHERNET_SRC_ADDR_ID, mac.toLong())
+                .matchExact(HF_IPV4_SRC_ADDR_ID, ip.toInt())
+                .build();
+        PiAction action = PiAction.builder()
+                .withId(ACT_BNGINGRESS_FILTER_SET_FORWARDING_TYPE_ID)
+                .withParameter(new PiActionParam(ACT_PRM_FWD_TYPE_ID, FWD_IPV4_ROUTED))
+                .build();
+        log.info("Inserting 'forwarding type' rule on switch {}: table={}, match={}, action={}",
+                cp.deviceId(), TBL_HOST_INGRESS_ID, match, action);
+        insertPiFlowRule(cp.deviceId(), TBL_HOST_INGRESS_ID, match, action);
+
+        // Insert and entry in the fwd_ipv4_downstream routing table
+        match = PiCriterion.builder()
+               .matchExact(HF_IPV4_DST_ADDR_ID, ip.toInt())
+               .build();
+        action = PiAction.builder()
+                .withId(ACT_BNGINGRESS_FORWARDING_L3_SWITCH_DOWNSTREAM_ID)
+                .withParameter(new PiActionParam(ACT_PRM_PORT_ID, cp.port().toLong()))
+                .withParameter(new PiActionParam(ACT_PRM_NEW_MAC_DA_ID, mac.toLong()))
+                .build();
+        log.info("Inserting 'forwarding type' rule on switch {}: table={}, match={}, action={}",
+                cp.deviceId(), TBL_FWD_IPV4_DOWNSTREAM_ID, match, action);
+        insertPiFlowRule(cp.deviceId(), TBL_FWD_IPV4_DOWNSTREAM_ID, match, action);
+        log.info("Finished configure Host {} with mac address {} in device {}", ip, mac, cp.deviceId());
+    }
+
+    /**
+     * Inserts a flow rule in the system that using a PI criterion and action.
+     *
+     * @param switchId    switch ID
+     * @param tableId     table ID
+     * @param piCriterion PI criterion
+     * @param piAction    PI action
+     */
+    private void insertPiFlowRule(DeviceId switchId, PiTableId tableId,
+                                  PiCriterion piCriterion, PiAction piAction) {
+        FlowRule rule = DefaultFlowRule.builder()
+                .forDevice(switchId)
+                .forTable(tableId)
+                .fromApp(appId)
+                .withPriority(FLOW_RULE_PRIORITY)
+                .makePermanent()
+                .withSelector(DefaultTrafficSelector.builder()
+                        .matchPi(piCriterion).build())
+                .withTreatment(DefaultTrafficTreatment.builder()
+                        .piTableAction(piAction).build())
+                .build();
+        flowRuleService.applyFlowRules(rule);
+    }
+
 }

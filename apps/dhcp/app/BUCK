@@ -8,6 +8,7 @@ COMPILE_DEPS = [
     '//utils/rest:onlab-rest',
     '//core/store/serializers:onos-core-serializers',
     '//cli:onos-cli',
+    '//pipelines/simplebng:onos-pipelines-simplebng',
 ]
 
 TEST_DEPS = [

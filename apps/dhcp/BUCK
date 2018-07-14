@@ -1,3 +1,9 @@
+COMPILE_DEPS = [
+    '//pipelines/simplebng:onos-pipelines-simplebng',
+    '//protocols/p4runtime/model:onos-protocols-p4runtime-model',
+    '//protocols/p4runtime/api:onos-protocols-p4runtime-api',
+]
+
 BUNDLES = [
     '//apps/dhcp/api:onos-apps-dhcp-api',
     '//apps/dhcp/app:onos-apps-dhcp-app',
