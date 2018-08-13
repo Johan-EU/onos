@@ -46,5 +46,15 @@ public enum PiEntityType {
     /**
      * Register entry.
      */
-    REGISTER_CELL
+    REGISTER_CELL,
+
+    /**
+     * Packet Replication Engine (PRE) multicast group entry.
+     */
+    PRE_MULTICAST_GROUP_ENTRY,
+
+    /**
+     * Packet Replication Engine (PRE) clone session entry.
+     */
+    PRE_CLONE_SESSION_ENTRY
 }

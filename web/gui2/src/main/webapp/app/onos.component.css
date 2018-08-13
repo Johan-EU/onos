@@ -28,3 +28,10 @@
     -webkit-margin-before: 0;
     -webkit-margin-after: 0;
 }
+
+#floatpanels {
+    z-index: 0;
+    font-size: 10pt;
+    width:821px;
+    top: 145px;
+}

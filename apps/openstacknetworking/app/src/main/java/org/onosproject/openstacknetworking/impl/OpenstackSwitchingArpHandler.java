@@ -85,7 +85,9 @@ import static org.onosproject.openstacknetworking.api.Constants.PRIORITY_ARP_GAT
 import static org.onosproject.openstacknetworking.api.Constants.PRIORITY_ARP_REPLY_RULE;
 import static org.onosproject.openstacknetworking.api.Constants.PRIORITY_ARP_REQUEST_RULE;
 import static org.onosproject.openstacknetworking.api.Constants.PRIORITY_ARP_SUBNET_RULE;
+import static org.onosproject.openstacknetworking.api.InstancePort.State.ACTIVE;
 import static org.onosproject.openstacknetworking.util.OpenstackNetworkingUtil.getPropertyValue;
+import static org.onosproject.openstacknetworking.util.OpenstackNetworkingUtil.swapStaleLocation;
 import static org.onosproject.openstacknetworking.util.RulePopulatorUtil.buildExtension;
 import static org.onosproject.openstacknode.api.OpenstackNode.NodeType.COMPUTE;
 
@@ -717,6 +719,7 @@ public final class OpenstackSwitchingArpHandler {
         private void setAllArpRules(OpenstackNode osNode, boolean install) {
             if (ARP_BROADCAST_MODE.equals(getArpMode())) {
                 instancePortService.instancePorts().stream()
+                        .filter(p -> p.state() == ACTIVE)
                         .filter(p -> p.deviceId().equals(osNode.intgBridge()))
                         .forEach(p -> {
                             setArpRequestRule(p, install);
@@ -749,8 +752,8 @@ public final class OpenstackSwitchingArpHandler {
         @Override
         public void event(InstancePortEvent event) {
             switch (event.type()) {
-                case OPENSTACK_INSTANCE_PORT_UPDATED:
                 case OPENSTACK_INSTANCE_PORT_DETECTED:
+                case OPENSTACK_INSTANCE_PORT_UPDATED:
                     setArpRequestRule(event.subject(), true);
                     setArpReplyRule(event.subject(), true);
                     break;
@@ -758,8 +761,13 @@ public final class OpenstackSwitchingArpHandler {
                     setArpRequestRule(event.subject(), false);
                     setArpReplyRule(event.subject(), false);
                     break;
+                case OPENSTACK_INSTANCE_MIGRATION_STARTED:
+                    setArpRequestRule(event.subject(), true);
+                    setArpReplyRule(event.subject(), true);
+                    break;
                 case OPENSTACK_INSTANCE_MIGRATION_ENDED:
-                    setArpRequestRule(event.subject(), false);
+                    InstancePort revisedInstPort = swapStaleLocation(event.subject());
+                    setArpRequestRule(revisedInstPort, false);
                     break;
                 default:
                     break;

@@ -15,13 +15,16 @@
  */
 package org.onosproject.drivers.server;
 
+import org.onosproject.drivers.server.devices.RestServerSBDevice;
+
+import org.onosproject.net.DeviceId;
 import org.onosproject.net.driver.AbstractHandlerBehaviour;
 import org.onosproject.net.driver.DriverHandler;
 import org.onosproject.protocol.rest.RestSBController;
-
-import org.onlab.osgi.ServiceNotFoundException;
+import org.onosproject.protocol.rest.RestSBDevice;
 
 import org.slf4j.Logger;
+
 import com.fasterxml.jackson.databind.JsonNode;
 
 import java.util.EnumSet;
@@ -43,7 +46,8 @@ public class BasicServerDriver extends AbstractHandlerBehaviour {
      */
     public    static final MediaType  JSON = MediaType.valueOf(MediaType.APPLICATION_JSON);
     protected static final String ROOT_URL = "";
-    public    static final String BASE_URL = ROOT_URL + "/metron";
+    protected static final String SLASH = "/";
+    public    static final String BASE_URL = ROOT_URL + SLASH + "metron";
 
     /**
      * Common parameters to be exchanged with the server's agent.
@@ -81,58 +85,56 @@ public class BasicServerDriver extends AbstractHandlerBehaviour {
     public BasicServerDriver() {};
 
     /**
-     * Initialize the REST SB controller (if not already).
-     * Creates a handler and a controller only once, and
-     * then re-uses these objects.
+     * Retrieve an instance of the driver handler.
      *
-     * @throws ServiceNotFoundException when either the handler
-     *         or the controller cannot be retrieved.
+     * @return DriverHandler instance
      */
-    private void init() {
+    protected DriverHandler getHandler() {
         synchronized (CONTROLLER_LOCK) {
-            // Already done
-            if ((handler != null) && (controller != null)) {
-                return;
-            }
-
             handler = handler();
             checkNotNull(handler, HANDLER_NULL);
-            controller = handler.get(RestSBController.class);
-            checkNotNull(controller, CONTROLLER_NULL);
         }
+
+        return handler;
     }
 
     /**
      * Retrieve an instance of the REST SB controller.
-     * Method init will only be called the first time
-     * this method (or getHandler) is invoked.
      *
      * @return RestSBController instance
      */
     public RestSBController getController() {
         synchronized (CONTROLLER_LOCK) {
             if (controller == null) {
-                init();
+                controller = getHandler().get(RestSBController.class);
+                checkNotNull(controller, CONTROLLER_NULL);
             }
         }
+
         return controller;
     }
 
     /**
-     * Retrieve an instance of the driver handler.
-     * Method init will only be called the first time
-     * this method (or getController) is invoked.
+     * Finds the NIC name that corresponds to a device's port number.
      *
-     * @return DriverHandler instance
+     * @param deviceId a device ID
+     * @param port a NIC port number
+     * @return device's NIC name
      */
-    protected DriverHandler getHandler() {
-        synchronized (CONTROLLER_LOCK) {
-            if (handler == null) {
-                init();
-            }
+    public static String findNicInterfaceWithPort(DeviceId deviceId, long port) {
+        if (controller == null) {
+            return null;
         }
 
-        return handler;
+        RestServerSBDevice device = null;
+        try {
+            device = (RestServerSBDevice) controller.getDevice(deviceId);
+        } catch (ClassCastException ccEx) {
+            return null;
+        }
+        checkNotNull(device, DEVICE_NULL);
+
+        return device.portNameFromNumber(port);
     }
 
     /**
@@ -142,8 +144,7 @@ public class BasicServerDriver extends AbstractHandlerBehaviour {
      * @param enumType the enum class to get its types
      * @return String with all enumeration types
      */
-    public static <E extends Enum<E>> String enumTypesToString(
-            Class<E> enumType) {
+    public static <E extends Enum<E>> String enumTypesToString(Class<E> enumType) {
         String allTypes = "";
         for (E en : EnumSet.allOf(enumType)) {
             allTypes += en.toString() + " ";
@@ -190,6 +191,23 @@ public class BasicServerDriver extends AbstractHandlerBehaviour {
         }
 
         return false;
+    }
+
+    /**
+     * Upon a failure to contact a device, the driver
+     * raises a disconnect event by resetting the
+     * activity flag of this device.
+     *
+     * @param device a device to disconnect
+     */
+    protected void raiseDeviceDisconnect(RestSBDevice device) {
+        // Already done!
+        if (!device.isActive()) {
+            return;
+        }
+
+        log.info("Setting device {} inactive", device.deviceId());
+        device.setActive(false);
     }
 
 }

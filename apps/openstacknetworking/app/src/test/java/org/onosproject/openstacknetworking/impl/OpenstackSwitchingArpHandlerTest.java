@@ -223,7 +223,32 @@ public class OpenstackSwitchingArpHandlerTest {
         }
 
         @Override
+        public DeviceId oldDeviceId() {
+            return null;
+        }
+
+        @Override
         public PortNumber portNumber() {
+            return null;
+        }
+
+        @Override
+        public PortNumber oldPortNumber() {
+            return null;
+        }
+
+        @Override
+        public State state() {
+            return null;
+        }
+
+        @Override
+        public InstancePort updateState(State newState) {
+            return null;
+        }
+
+        @Override
+        public InstancePort updatePrevLocation(DeviceId oldDeviceId, PortNumber oldPortNumber) {
             return null;
         }
     }

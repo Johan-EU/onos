@@ -60,6 +60,9 @@ import static org.onosproject.net.pi.model.PiPacketOperationType.PACKET_OUT;
  */
 public class FabricInterpreter extends AbstractHandlerBehaviour
         implements PiPipelineInterpreter {
+
+    public static final int PORT_BITWIDTH = 9;
+
     private static final ImmutableBiMap<Integer, PiTableId> TABLE_ID_MAP =
             ImmutableBiMap.<Integer, PiTableId>builder()
                     // Filtering
@@ -105,16 +108,12 @@ public class FabricInterpreter extends AbstractHandlerBehaviour
                     .put(Criterion.Type.IN_PORT, FabricConstants.STANDARD_METADATA_INGRESS_PORT)
                     .put(Criterion.Type.ETH_DST, FabricConstants.HDR_ETHERNET_DST_ADDR)
                     .put(Criterion.Type.ETH_SRC, FabricConstants.HDR_ETHERNET_SRC_ADDR)
-                    .put(Criterion.Type.ETH_TYPE, FabricConstants.FABRIC_METADATA_ORIGINAL_ETHER_TYPE)
+                    .put(Criterion.Type.ETH_TYPE, FabricConstants.HDR_VLAN_TAG_ETHER_TYPE)
                     .put(Criterion.Type.MPLS_LABEL, FabricConstants.HDR_MPLS_LABEL)
                     .put(Criterion.Type.VLAN_VID, FabricConstants.HDR_VLAN_TAG_VLAN_ID)
                     .put(Criterion.Type.IPV4_DST, FabricConstants.HDR_IPV4_DST_ADDR)
                     .put(Criterion.Type.IPV4_SRC, FabricConstants.HDR_IPV4_SRC_ADDR)
                     .put(Criterion.Type.IPV6_DST, FabricConstants.HDR_IPV6_DST_ADDR)
-                    .put(Criterion.Type.TCP_SRC, FabricConstants.FABRIC_METADATA_L4_SRC_PORT)
-                    .put(Criterion.Type.TCP_DST, FabricConstants.FABRIC_METADATA_L4_DST_PORT)
-                    .put(Criterion.Type.UDP_SRC, FabricConstants.FABRIC_METADATA_L4_SRC_PORT)
-                    .put(Criterion.Type.UDP_DST, FabricConstants.FABRIC_METADATA_L4_DST_PORT)
                     .put(Criterion.Type.IP_PROTO, FabricConstants.FABRIC_METADATA_IP_PROTO)
                     .put(Criterion.Type.ICMPV6_TYPE, FabricConstants.HDR_ICMP_ICMP_TYPE)
                     .put(Criterion.Type.ICMPV6_CODE, FabricConstants.HDR_ICMP_ICMP_CODE)
@@ -125,7 +124,7 @@ public class FabricInterpreter extends AbstractHandlerBehaviour
                     .put(FabricConstants.STANDARD_METADATA_INGRESS_PORT, Criterion.Type.IN_PORT)
                     .put(FabricConstants.HDR_ETHERNET_DST_ADDR, Criterion.Type.ETH_DST)
                     .put(FabricConstants.HDR_ETHERNET_SRC_ADDR, Criterion.Type.ETH_SRC)
-                    .put(FabricConstants.FABRIC_METADATA_ORIGINAL_ETHER_TYPE, Criterion.Type.ETH_TYPE)
+                    .put(FabricConstants.HDR_VLAN_TAG_ETHER_TYPE, Criterion.Type.ETH_TYPE)
                     .put(FabricConstants.HDR_MPLS_LABEL, Criterion.Type.MPLS_LABEL)
                     .put(FabricConstants.HDR_VLAN_TAG_VLAN_ID, Criterion.Type.VLAN_VID)
                     .put(FabricConstants.HDR_IPV4_DST_ADDR, Criterion.Type.IPV4_DST)
@@ -164,13 +163,13 @@ public class FabricInterpreter extends AbstractHandlerBehaviour
             throws PiInterpreterException {
 
         if (FILTERING_CTRL_TBLS.contains(piTableId)) {
-            return FabricTreatmentInterpreter.mapFilteringTreatment(treatment);
+            return FabricTreatmentInterpreter.mapFilteringTreatment(treatment, piTableId);
         } else if (FORWARDING_CTRL_TBLS.contains(piTableId)) {
-            return FabricTreatmentInterpreter.mapForwardingTreatment(treatment);
+            return FabricTreatmentInterpreter.mapForwardingTreatment(treatment, piTableId);
         } else if (NEXT_CTRL_TBLS.contains(piTableId)) {
-            return FabricTreatmentInterpreter.mapNextTreatment(treatment);
+            return FabricTreatmentInterpreter.mapNextTreatment(treatment, piTableId);
         } else if (E_NEXT_CTRL_TBLS.contains(piTableId)) {
-            return FabricTreatmentInterpreter.mapEgressNextTreatment(treatment);
+            return FabricTreatmentInterpreter.mapEgressNextTreatment(treatment, piTableId);
         } else {
             throw new PiInterpreterException(String.format("Table %s unsupported", piTableId));
         }
@@ -191,7 +190,7 @@ public class FabricInterpreter extends AbstractHandlerBehaviour
         try {
             return PiControlMetadata.builder()
                     .withId(FabricConstants.EGRESS_PORT)
-                    .withValue(copyFrom(portNumber).fit(FabricConstants.PORT_BITWIDTH))
+                    .withValue(copyFrom(portNumber).fit(PORT_BITWIDTH))
                     .build();
         } catch (ImmutableByteSequence.ByteSequenceTrimException e) {
             throw new PiInterpreterException(format(

@@ -23,6 +23,7 @@ import org.onosproject.openstacknode.api.Constants;
 import org.onosproject.openstacknode.api.OpenstackAuth;
 import org.onosproject.openstacknode.api.OpenstackNode;
 import org.onosproject.openstacknode.api.OpenstackPhyInterface;
+import org.onosproject.openstacknode.api.OpenstackSshAuth;
 
 import static org.onosproject.openstacknode.api.Constants.DATA_IP;
 import static org.onosproject.openstacknode.api.Constants.MANAGEMENT_IP;
@@ -40,6 +41,8 @@ public final class OpenstackNodeJsonMatcher extends TypeSafeDiagnosingMatcher<Js
     private static final String CONTROLLERS = "controllers";
     private static final String AUTHENTICATION = "authentication";
     private static final String END_POINT = "endPoint";
+    private static final String SSH_AUTH = "sshAuth";
+    private static final String DATA_PATH_TYPE = "datapathType";
 
     private OpenstackNodeJsonMatcher(OpenstackNode node) {
         this.node = node;
@@ -120,12 +123,33 @@ public final class OpenstackNodeJsonMatcher extends TypeSafeDiagnosingMatcher<Js
             }
         }
 
+        // check openstack ssh auth
+        JsonNode jsonSshAuth = jsonNode.get(SSH_AUTH);
+        if (jsonSshAuth != null) {
+            OpenstackSshAuth sshAuth = node.sshAuthInfo();
+            OpenstackSshAuthJsonMatcher sshAuthJsonMatcher =
+                    OpenstackSshAuthJsonMatcher.matchOpenstackSshAuth(sshAuth);
+            if (!sshAuthJsonMatcher.matches(jsonSshAuth)) {
+                return false;
+            }
+        }
+
         // check endpoint URL
         JsonNode jsonEndPoint = jsonNode.get(END_POINT);
         if (jsonEndPoint != null) {
             String endPoint = node.endPoint();
             if (!jsonEndPoint.asText().equals(endPoint)) {
                 description.appendText("endpoint URL was " + jsonEndPoint);
+                return false;
+            }
+        }
+
+        // check datapath type
+        JsonNode jsonDatapathType = jsonNode.get(DATA_PATH_TYPE);
+        if (jsonDatapathType != null) {
+            OpenstackNode.DatapathType datapathType = node.datapathType();
+            if (!OpenstackNode.DatapathType.valueOf(jsonDatapathType.asText()).equals(datapathType)) {
+                description.appendText("datapathType was " + jsonDatapathType);
                 return false;
             }
         }

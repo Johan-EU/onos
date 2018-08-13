@@ -54,11 +54,8 @@ public class InstancePortServiceAdapter implements InstancePortService {
     }
 
     @Override
-    public void migrationPortAdded(InstancePort port) {
-    }
-
-    @Override
-    public void migrationPortRemoved(InstancePort port) {
+    public IpAddress floatingIp(String osPortId) {
+        return null;
     }
 
     @Override

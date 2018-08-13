@@ -38,17 +38,14 @@ public final class Constants {
     public static final MacAddress DEFAULT_GATEWAY_MAC = MacAddress.valueOf(DEFAULT_GATEWAY_MAC_STR);
     public static final MacAddress DEFAULT_EXTERNAL_ROUTER_MAC = MacAddress.valueOf("fe:00:00:00:00:01");
 
-    private static final String CAVIUM_PCI_VENDOR_INFO = "177d:9712";
-    private static final String PORT_NAME_PREFIX_CAVIUM = "enp";
     public static final String PCI_VENDOR_INFO = "pci_vendor_info";
     public static final String DIRECT = "direct";
     public static final String PCISLOT = "pci_slot";
 
-    private static final Map<String, String> PORT_NAME_PREFIX_MAP = createPortNamePrefixMap();
-    private static Map<String, String> createPortNamePrefixMap() {
-        //Additional pci vendor information will be added
-        return ImmutableMap.of(CAVIUM_PCI_VENDOR_INFO, PORT_NAME_PREFIX_CAVIUM);
-    }
+    public static final String ANNOTATION_NETWORK_ID = "networkId";
+    public static final String ANNOTATION_PORT_ID = "portId";
+    public static final String ANNOTATION_CREATE_TIME = "createTime";
+    public static final String ANNOTATION_SEGMENT_ID = "segId";
 
     public static final int PRIORITY_TUNNEL_TAG_RULE = 30000;
     public static final int PRIORITY_FLOATING_INTERNAL = 42000;
@@ -76,6 +73,7 @@ public final class Constants {
     public static final int PRIORITY_ARP_REPLY_RULE = 40000;
     public static final int PRIORITY_ARP_REQUEST_RULE = 40000;
     public static final int PRIORITY_FORCED_ACL_RULE = 50000;
+    public static final int PRIORITY_ICMP_PROBE_RULE = 50000;
 
     // flow table index
     public static final int STAT_INBOUND_TABLE = 0;
@@ -105,5 +103,14 @@ public final class Constants {
 
     public static Map<String, String> portNamePrefixMap() {
         return PORT_NAME_PREFIX_MAP;
+    }
+
+    private static final String CAVIUM_PCI_VENDOR_INFO = "177d:9712";
+    private static final String PORT_NAME_PREFIX_CAVIUM = "enp";
+
+    private static final Map<String, String> PORT_NAME_PREFIX_MAP = createPortNamePrefixMap();
+    private static Map<String, String> createPortNamePrefixMap() {
+        //Additional pci vendor information will be added
+        return ImmutableMap.of(CAVIUM_PCI_VENDOR_INFO, PORT_NAME_PREFIX_CAVIUM);
     }
 }

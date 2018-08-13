@@ -18,6 +18,9 @@ load("//tools/build/bazel:generate_workspace.bzl", "COMPILE", "TEST")
 load("//tools/build/bazel:variables.bzl", "ONOS_VERSION")
 load("//tools/build/bazel:generate_test_rules.bzl", "generate_test_rules")
 load("//tools/build/bazel:checkstyle.bzl", "checkstyle_test")
+load("//tools/build/bazel:pom_file.bzl", "pom_file")
+load("//tools/build/bazel:java_sources.bzl", "java_sources")
+load("//tools/build/bazel:javadoc.bzl", "javadoc")
 
 def _all_java_sources():
     return native.glob(["src/main/java/**/*.java"])
@@ -35,11 +38,18 @@ def _all_resources(resources_root):
         return native.glob([resources_root + "**"])
 
 def _webapp():
-    return native.glob(["src/main/webapp/**"])
+    return native.glob(["src/main/webapp/WEB-INF/web.xml"])
+
+def _include_resources_to_string(include_resources):
+    result = ""
+    for (path, filename) in include_resources.items():
+        result += (path + "=" + filename)
+    return result
 
 """
     Implementation of the rule to call bnd to make an OSGI jar file
 """
+
 def _bnd_impl(ctx):
     if (len(ctx.files.source) == 1):
         input_file = ctx.files.source[0]
@@ -55,13 +65,14 @@ def _bnd_impl(ctx):
 
     jar = input_file.path
     output = ctx.outputs.osgi_jar.path
-    name = ctx.attr.source.label.name
+    name = ctx.attr.name
     group = ctx.attr.group
     version = ctx.attr.version
     license = ""
     import_packages = ctx.attr.import_packages
+    bundle_classpath = ctx.attr.bundle_classpath
     exportPackages = "*"
-    includeResources = ""
+    include_resources = ctx.attr.include_resources
     web_context = ctx.attr.web_context
     if web_context == None or web_context == "":
         web_context = "NONE"
@@ -75,23 +86,11 @@ def _bnd_impl(ctx):
     for dep in ctx.attr.deps:
         if java_common.provider in dep:
             file = dep.files.to_list()[0]
-
             if cp:
                 cp += ":"
             cp += file.path
             inputDependencies = inputDependencies + [file]
 
-    # extract the class files for use by bnd
-    classes = ctx.actions.declare_file("classes" + ctx.label.name.replace("/", "-"))
-    classesPath = classes.path
-    jarCommand = "mkdir -p %s && cp %s %s && cd %s && jar xf *.jar" % (classesPath, jar, classesPath, classesPath)
-    ctx.actions.run_shell(
-        inputs = inputDependencies,
-        outputs = [classes],
-        command = jarCommand,
-        progress_message = "Expanding jar file: %s" % jar,
-    )
-    inputDependencies += [classes]
     web_xml_root_path = ""
     if len(web_xml) != 0:
         web_xml_root = web_xml[0].files.to_list()[0]
@@ -109,11 +108,12 @@ def _bnd_impl(ctx):
         license,
         import_packages,
         exportPackages,
-        includeResources,
+        include_resources,
         web_context,
         web_xml_root_path,
         dynamicimportPackages,
-        classesPath,
+        "classes",
+        bundle_classpath,
     ]
 
     ctx.actions.run(
@@ -142,8 +142,10 @@ _bnd = rule(
         "group": attr.string(),
         "source": attr.label(),
         "import_packages": attr.string(),
+        "bundle_classpath": attr.string(),
         "web_context": attr.string(),
         "web_xml": attr.label_list(allow_files = True),
+        "include_resources": attr.string(),
         "_bnd_exe": attr.label(
             executable = True,
             cfg = "host",
@@ -161,6 +163,7 @@ _bnd = rule(
 """
     Implementation of the rule to call swagger generator to create the registrator java class source
 """
+
 def _swagger_java_impl(ctx):
     api_title = ctx.attr.api_title
     api_version = ctx.attr.api_version
@@ -169,7 +172,7 @@ def _swagger_java_impl(ctx):
     web_context = ctx.attr.web_context
 
     output_java = ctx.outputs.swagger_java.path
-    output_dir = output_java [:output_java.find("generated-sources")]
+    output_dir = output_java[:output_java.find("generated-sources")]
 
     package_name = ctx.attr.package_name
 
@@ -210,6 +213,7 @@ def _swagger_java_impl(ctx):
 """
 Implementation of the rule to call swagger generator for swagger.json file
 """
+
 def _swagger_json_impl(ctx):
     api_title = ctx.attr.api_title
     api_version = ctx.attr.api_version
@@ -316,6 +320,7 @@ _swagger_json = rule(
         import_packages: OSGI import list. Optional, comma separated list, defaults to "*"
         visibility: Visibility of the produced jar file to other BUILDs. Optional, defaults to private
 """
+
 def wrapped_osgi_jar(
         name,
         jar,
@@ -345,6 +350,7 @@ def wrapped_osgi_jar(
         exclude_tests: Tests that should not be run. Useful for excluding things like test files without any @Test methods.
                        Optional ist of targets, defaults to []
 """
+
 def osgi_jar_with_tests(
         name = None,
         deps = None,
@@ -353,17 +359,27 @@ def osgi_jar_with_tests(
         srcs = None,
         resources_root = None,
         resources = None,
+        resource_jars = [],
+        include_resources = {},
         test_srcs = None,
         exclude_tests = None,
+        medium_tests = [],
+        large_tests = [],
+        enormous_tests = [],
+        flaky_tests = [],
         test_resources = None,
         visibility = ["//visibility:public"],
         version = ONOS_VERSION,
+        suppress_errorprone = False,
+        suppress_checkstyle = False,
+        suppress_javadocs = False,
         web_context = None,
         api_title = "",
         api_version = "",
         api_description = "",
         api_package = "",
-        import_packages = None):
+        import_packages = None,
+        bundle_classpath = ""):
     if name == None:
         name = "onos-" + native.package_name().replace("/", "-")
     if srcs == None:
@@ -389,7 +405,7 @@ def osgi_jar_with_tests(
 
     native_srcs = srcs
     native_resources = resources
-    if web_context != None and api_title != None and len(resources) != 0:
+    if web_context != None and api_title != "" and len(resources) != 0:
         # generate Swagger files if needed
         _swagger_java(
             name = name + "_swagger_java",
@@ -401,8 +417,8 @@ def osgi_jar_with_tests(
             web_context = web_context,
             api_package = api_package,
             swagger_java = ("src/main/resources/apidoc/generated-sources/" +
-                           api_package.replace(".", "/") +
-                           "/ApiDocRegistrator.java").replace("//", "/"),
+                            api_package.replace(".", "/") +
+                            "/ApiDocRegistrator.java").replace("//", "/"),
         )
         _swagger_json(
             name = name + "_swagger_json",
@@ -417,13 +433,20 @@ def osgi_jar_with_tests(
         )
         native_resources = []
         for r in resources:
-             if not "definitions" in r:
+            if not "definitions" in r:
                 native_resources.append(r)
-        native_srcs = srcs + [ name + "_swagger_java" ]
-        native_resources.append(name + "_swagger_json");
+        native_srcs = srcs + [name + "_swagger_java"]
+        native_resources.append(name + "_swagger_json")
+
+    javacopts = [ "-XepDisableAllChecks" ] if suppress_errorprone else []
 
     # compile the Java code
-    native.java_library(name = name + "-native", srcs = native_srcs, resources = native_resources, deps = deps, visibility = visibility)
+    if len(resource_jars) > 0:
+        native.java_library(name = name + "-native", srcs = native_srcs, resource_jars = resource_jars,
+                            deps = deps, visibility = visibility, javacopts = javacopts)
+    else:
+        native.java_library(name = name + "-native", srcs = native_srcs, resources = native_resources,
+                            deps = deps, visibility = visibility, javacopts = javacopts)
 
     _bnd(
         name = name,
@@ -433,9 +456,23 @@ def osgi_jar_with_tests(
         group = group,
         visibility = visibility,
         import_packages = import_packages,
+        bundle_classpath = bundle_classpath,
         web_context = web_context,
         web_xml = web_xml,
+        include_resources = _include_resources_to_string(include_resources),
     )
+
+    # rule for generating pom file for publishing
+    pom_file(name = name + "-pom", artifact = name, deps = deps, visibility = visibility)
+
+    # rule for building source jar
+    if not suppress_javadocs:
+      java_sources(name = name + "-sources", srcs = srcs, visibility = visibility)
+
+    # rule for building javadocs
+    if not suppress_javadocs:
+      javadoc(name = name + "-javadoc", deps = deps, srcs = srcs, visibility = visibility)
+
     if test_srcs != []:
         native.java_library(
             name = tests_name,
@@ -449,13 +486,17 @@ def osgi_jar_with_tests(
             name = name + "-tests-gen",
             test_files = test_srcs,
             exclude_tests = exclude_tests,
+            medium_tests = medium_tests,
+            large_tests = large_tests,
+            enormous_tests = enormous_tests,
             deps = all_test_deps,
         )
 
-    checkstyle_test(
-        name = name + "_checkstyle_test",
-        srcs = srcs,
-    )
+    if not suppress_checkstyle:
+        checkstyle_test(
+            name = name + "_checkstyle_test",
+            srcs = srcs,
+        )
 
 """
     Creates an OSGI jar file from a set of source files.
@@ -465,18 +506,22 @@ def osgi_jar_with_tests(
               For example apps/mcast/app becomes onos-apps-mcast-app
         deps: Dependencies of the generated jar file. Expressed as a list of targets
         import_packages: OSGI import list. Optional, comma separated list, defaults to "*"
+        bundle_classpath: intended for including dependencies in our bundle, so that our bundle can be deployed standalone
         group: Maven group ID for the resulting jar file. Optional, defaults to 'org.onosproject'
         srcs: Source file(s) to compile. Optional list of targets, defaults to src/main/java/**/*.java
         resources_root: Relative path to the root of the tree of resources for this jar. Optional, defaults to src/main/resources
         resources: Resources to include in the jar file. Optional list of targets, defaults to all files beneath resources_root
         visibility: Visibility of the produced jar file to other BUILDs. Optional, defaults to public
         version: Version of the generated jar file. Optional, defaults to the current ONOS version
+        suppress_errorprone: If true, don't run ErrorProne tests. Default is false
+        suppress_checkstyle: If true, don't run checkstyle tests. Default is false
         web_context: Web context for a WAB file if needed. Only needed if the jar file provides a REST API. Optional string
         api_title: Swagger API title. Optional string, only used if the jar file provides a REST API and has swagger annotations
         api_version: Swagger API version. Optional string, only used if the jar file provides a REST API and has swagger annotations
         api_description: Swagger API description. Optional string, only used if the jar file provides a REST API and has swagger annotations
         api_package: Swagger API package name. Optional string, only used if the jar file provides a REST API and has swagger annotations
 """
+
 def osgi_jar(
         name = None,
         deps = None,
@@ -485,13 +530,19 @@ def osgi_jar(
         srcs = None,
         resources_root = None,
         resources = None,
+        resource_jars = [],
+        include_resources = {},
         visibility = ["//visibility:public"],
         version = ONOS_VERSION,
+        suppress_errorprone = False,
+        suppress_checkstyle = False,
+        suppress_javadocs = False,
         web_context = None,
         api_title = "",
         api_version = "",
         api_description = "",
-        api_package = ""):
+        api_package = "",
+        bundle_classpath = ""):
     if srcs == None:
         srcs = _all_java_sources()
     if deps == None:
@@ -505,10 +556,14 @@ def osgi_jar(
         srcs = srcs,
         resources = resources,
         resources_root = resources_root,
+        resource_jars = resource_jars,
         test_srcs = [],
         exclude_tests = [],
         test_resources = [],
         visibility = visibility,
+        suppress_errorprone = suppress_errorprone,
+        suppress_checkstyle = suppress_checkstyle,
+        suppress_javadocs = suppress_javadocs,
         version = version,
         import_packages = import_packages,
         api_title = api_title,
@@ -516,4 +571,5 @@ def osgi_jar(
         api_description = api_description,
         api_package = api_package,
         web_context = web_context,
+        bundle_classpath = bundle_classpath,
     )

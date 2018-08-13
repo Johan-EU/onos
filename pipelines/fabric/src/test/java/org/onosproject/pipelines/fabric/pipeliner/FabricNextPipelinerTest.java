@@ -287,7 +287,9 @@ public class FabricNextPipelinerTest extends FabricPipelinerTest {
         List<GroupDescription> groupsInstalled = (List<GroupDescription>) result.groups();
         assertEquals(3, flowRulesInstalled.size());
         assertEquals(1, groupsInstalled.size());
-        assertEquals(2, groupsInstalled.get(0).buckets().buckets().size());
+        // FIXME: expected should be 2
+        // But we are adding an extra bucket to clone the pkt to the CPU
+        assertEquals(3, groupsInstalled.get(0).buckets().buckets().size());
 
         //create the expected flow rule
         PiCriterion nextIdCriterion = PiCriterion.builder()
@@ -350,11 +352,21 @@ public class FabricNextPipelinerTest extends FabricPipelinerTest {
 
         //create the expected group
         GroupDescription actualGroup = groupsInstalled.get(0);
-        List<TrafficTreatment> treatments = ImmutableList.of(treatment1, treatment2);
+        TrafficTreatment groupTreatment1 = DefaultTrafficTreatment.builder()
+                .setOutput(PORT_1)
+                .build();
+        TrafficTreatment groupTreatment2 = DefaultTrafficTreatment.builder()
+                .setOutput(PORT_2)
+                .build();
+        List<TrafficTreatment> treatments = ImmutableList.of(groupTreatment1, groupTreatment2);
 
         List<GroupBucket> buckets = treatments.stream()
                 .map(DefaultGroupBucket::createAllGroupBucket)
                 .collect(Collectors.toList());
+
+        // FIXME: remove when we implement proper clone to CPU behavior
+        buckets.add(DefaultGroupBucket.createAllGroupBucket(
+                DefaultTrafficTreatment.builder().punt().build()));
 
         GroupBuckets groupBuckets = new GroupBuckets(buckets);
 

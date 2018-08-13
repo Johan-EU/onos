@@ -201,9 +201,6 @@ public class HostHandler {
 
         // For each old location
         Sets.difference(prevLocations, newLocations).forEach(prevLocation -> {
-            // First of all, verify each old location
-            srManager.probingService.probeHost(host, prevLocation, ProbeMode.VERIFY);
-
             // Remove routing rules for old IPs
             Sets.difference(prevIps, newIps).forEach(ip -> {
                 if (doubleTaggedHost) {
@@ -294,6 +291,7 @@ public class HostHandler {
             // Majorly for the 2nd step of [1A/x, 1B/x] -> [1A/x, 1B/y] -> [1A/y, 1B/y]
             // But will also cover [1A/x] -> [1A/y] -> [1A/y, 1B/y]
             if (srManager.activeProbing) {
+
                 srManager.getPairDeviceId(newLocation.deviceId()).ifPresent(pairDeviceId ->
                         srManager.getPairLocalPort(pairDeviceId).ifPresent(pairRemotePort ->
                                 probe(host, newLocation, pairDeviceId, pairRemotePort)
@@ -323,6 +321,9 @@ public class HostHandler {
                                        hostMac, hostVlanId, ip, false);
                 }
             });
+
+            // Verify existing location and see if it is still valid
+            srManager.probingService.probeHost(host, unchangedLocation, ProbeMode.VERIFY);
         });
 
         // ensure dual-homed host locations have viable uplinks
@@ -528,6 +529,11 @@ public class HostHandler {
                                                 MacAddress mac, VlanId innerVlan,
                                                 VlanId outerVlan, EthType outerTpid,
                                                 IpAddress ip, boolean revoke) {
+        if (!srManager.routeDoubleTaggedHosts) {
+            log.debug("Routing for double tagged host is disabled. Ignore {}/{}/{}", mac, outerVlan, innerVlan);
+            return;
+        }
+
         ConnectPoint location = new ConnectPoint(deviceId, port);
         if (!srManager.deviceConfiguration.inSameSubnet(location, ip)) {
             log.info("{} is not included in the subnet config of {}/{}. Ignored.", ip, deviceId, port);
@@ -542,6 +548,30 @@ public class HostHandler {
             srManager.defaultRoutingHandler.populateDoubleTaggedRoute(
                     deviceId, ip.toIpPrefix(), mac, innerVlan, outerVlan, outerTpid, port);
         }
+    }
+
+    void populateAllDoubleTaggedHost() {
+        log.info("Enabling routing for all double tagged hosts");
+        Sets.newHashSet(srManager.hostService.getHosts()).stream().filter(this::isDoubleTaggedHost)
+                .forEach(h -> h.locations().forEach(l ->
+                    h.ipAddresses().forEach(i ->
+                        processDoubleTaggedRoutingRule(l.deviceId(), l.port(), h.mac(), h.innerVlan(),
+                                h.vlan(), h.tpid(), i, false)
+                    )
+            )
+        );
+    }
+
+    void revokeAllDoubleTaggedHost() {
+        log.info("Disabling routing for all double tagged hosts");
+        Sets.newHashSet(srManager.hostService.getHosts()).stream().filter(this::isDoubleTaggedHost)
+                .forEach(h -> h.locations().forEach(l ->
+                    h.ipAddresses().forEach(i ->
+                        processDoubleTaggedRoutingRule(l.deviceId(), l.port(), h.mac(), h.innerVlan(),
+                            h.vlan(), h.tpid(), i, true)
+                    )
+            )
+        );
     }
 
     /**

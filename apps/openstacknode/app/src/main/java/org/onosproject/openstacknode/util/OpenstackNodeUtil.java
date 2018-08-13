@@ -15,6 +15,7 @@
  */
 package org.onosproject.openstacknode.util;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Strings;
 import org.onosproject.net.device.DeviceService;
 import org.onosproject.openstacknode.api.OpenstackAuth;
@@ -38,6 +39,7 @@ import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
+import java.io.IOException;
 import java.security.cert.X509Certificate;
 import java.util.Dictionary;
 
@@ -47,7 +49,7 @@ import static org.onlab.util.Tools.get;
  * An utility that used in openstack node app.
  */
 public final class OpenstackNodeUtil {
-    protected static final Logger log = LoggerFactory.getLogger(OpenstackNodeUtil.class);
+    private static final Logger log = LoggerFactory.getLogger(OpenstackNodeUtil.class);
 
     // keystone endpoint related variables
     private static final String DOMAIN_DEFAULT = "default";
@@ -153,6 +155,23 @@ public final class OpenstackNodeUtil {
             value = null;
         }
         return value;
+    }
+
+    /**
+     * Prints out the JSON string in pretty format.
+     *
+     * @param mapper        Object mapper
+     * @param jsonString    JSON string
+     * @return pretty formatted JSON string
+     */
+    public static String prettyJson(ObjectMapper mapper, String jsonString) {
+        try {
+            Object jsonObject = mapper.readValue(jsonString, Object.class);
+            return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(jsonObject);
+        } catch (IOException e) {
+            log.debug("Json string parsing exception caused by {}", e);
+        }
+        return null;
     }
 
     /**

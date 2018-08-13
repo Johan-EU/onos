@@ -28,6 +28,7 @@ import org.onosproject.openstacknode.api.NodeState;
 import org.onosproject.openstacknode.api.OpenstackAuth;
 import org.onosproject.openstacknode.api.OpenstackNode;
 import org.onosproject.openstacknode.api.OpenstackPhyInterface;
+import org.onosproject.openstacknode.api.OpenstackSshAuth;
 import org.slf4j.Logger;
 
 import java.util.ArrayList;
@@ -59,8 +60,11 @@ public final class OpenstackNodeCodec extends JsonCodec<OpenstackNode> {
     private static final String CONTROLLERS = "controllers";
     private static final String AUTHENTICATION = "authentication";
     private static final String END_POINT = "endPoint";
+    private static final String SSH_AUTH = "sshAuth";
+    private static final String DATA_PATH_TYPE = "datapathType";
 
     private static final String MISSING_MESSAGE = " is required in OpenstackNode";
+    private static final String UNSUPPORTED_DATAPATH_TYPE = "Unsupported datapath type";
 
     @Override
     public ObjectNode encode(OpenstackNode node, CodecContext context) {
@@ -70,7 +74,8 @@ public final class OpenstackNodeCodec extends JsonCodec<OpenstackNode> {
                 .put(HOST_NAME, node.hostname())
                 .put(TYPE, node.type().name())
                 .put(STATE, node.state().name())
-                .put(MANAGEMENT_IP, node.managementIp().toString());
+                .put(MANAGEMENT_IP, node.managementIp().toString())
+                .put(DATA_PATH_TYPE, node.datapathType().name());
 
         OpenstackNode.NodeType type = node.type();
 
@@ -111,7 +116,13 @@ public final class OpenstackNodeCodec extends JsonCodec<OpenstackNode> {
         if (node.authentication() != null) {
             ObjectNode authJson = context.codec(OpenstackAuth.class)
                     .encode(node.authentication(), context);
-            result.put(AUTHENTICATION, authJson);
+            result.set(AUTHENTICATION, authJson);
+        }
+
+        if (node.sshAuthInfo() != null) {
+            ObjectNode sshAuthJson = context.codec(OpenstackSshAuth.class)
+                    .encode(node.sshAuthInfo(), context);
+            result.set(SSH_AUTH, sshAuthJson);
         }
 
         return result;
@@ -156,6 +167,17 @@ public final class OpenstackNodeCodec extends JsonCodec<OpenstackNode> {
             nodeBuilder.dataIp(IpAddress.valueOf(json.get(DATA_IP).asText()));
         }
 
+        JsonNode datapathTypeJson = json.get(DATA_PATH_TYPE);
+
+        if (datapathTypeJson == null ||
+                datapathTypeJson.asText().equals(OpenstackNode.DatapathType.NORMAL.name().toLowerCase())) {
+            nodeBuilder.datapathType(OpenstackNode.DatapathType.NORMAL);
+        } else if (datapathTypeJson.asText().equals(OpenstackNode.DatapathType.NETDEV.name().toLowerCase())) {
+            nodeBuilder.datapathType(OpenstackNode.DatapathType.NETDEV);
+        } else {
+            throw new IllegalArgumentException(UNSUPPORTED_DATAPATH_TYPE + datapathTypeJson.asText());
+        }
+
         // parse physical interfaces
         List<OpenstackPhyInterface> phyIntfs = new ArrayList<>();
         JsonNode phyIntfsJson = json.get(PHYSICAL_INTERFACES);
@@ -194,6 +216,15 @@ public final class OpenstackNodeCodec extends JsonCodec<OpenstackNode> {
 
             OpenstackAuth auth = authCodec.decode((ObjectNode) authJson.deepCopy(), context);
             nodeBuilder.authentication(auth);
+        }
+
+        // parse ssh authentication
+        JsonNode sshAuthJson = json.get(SSH_AUTH);
+        if (json.get(SSH_AUTH) != null) {
+            final JsonCodec<OpenstackSshAuth> sshAuthJsonCodec = context.codec(OpenstackSshAuth.class);
+
+            OpenstackSshAuth sshAuth = sshAuthJsonCodec.decode((ObjectNode) sshAuthJson.deepCopy(), context);
+            nodeBuilder.sshAuthInfo(sshAuth);
         }
 
         log.trace("node is {}", nodeBuilder.build().toString());

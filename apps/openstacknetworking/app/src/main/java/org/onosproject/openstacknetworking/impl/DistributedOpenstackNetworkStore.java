@@ -29,6 +29,7 @@ import org.onosproject.core.CoreService;
 import org.onosproject.openstacknetworking.api.OpenstackNetworkEvent;
 import org.onosproject.openstacknetworking.api.OpenstackNetworkStore;
 import org.onosproject.openstacknetworking.api.OpenstackNetworkStoreDelegate;
+import org.onosproject.openstacknetworking.api.PreCommitPortService;
 import org.onosproject.store.AbstractStore;
 import org.onosproject.store.serializers.KryoNamespaces;
 import org.onosproject.store.service.ConsistentMap;
@@ -68,6 +69,7 @@ import static org.onosproject.openstacknetworking.api.OpenstackNetworkEvent.Type
 import static org.onosproject.openstacknetworking.api.OpenstackNetworkEvent.Type.OPENSTACK_NETWORK_REMOVED;
 import static org.onosproject.openstacknetworking.api.OpenstackNetworkEvent.Type.OPENSTACK_NETWORK_UPDATED;
 import static org.onosproject.openstacknetworking.api.OpenstackNetworkEvent.Type.OPENSTACK_PORT_CREATED;
+import static org.onosproject.openstacknetworking.api.OpenstackNetworkEvent.Type.OPENSTACK_PORT_PRE_REMOVE;
 import static org.onosproject.openstacknetworking.api.OpenstackNetworkEvent.Type.OPENSTACK_PORT_REMOVED;
 import static org.onosproject.openstacknetworking.api.OpenstackNetworkEvent.Type.OPENSTACK_PORT_SECURITY_GROUP_ADDED;
 import static org.onosproject.openstacknetworking.api.OpenstackNetworkEvent.Type.OPENSTACK_PORT_SECURITY_GROUP_REMOVED;
@@ -90,6 +92,8 @@ public class DistributedOpenstackNetworkStore
 
     private static final String ERR_NOT_FOUND = " does not exist";
     private static final String ERR_DUPLICATE = " already exists";
+
+    private static final long TIMEOUT_MS = 2000; // wait for 2s
 
     private static final KryoNamespace SERIALIZER_NEUTRON_L2 = KryoNamespace.newBuilder()
             .register(KryoNamespaces.API)
@@ -117,6 +121,9 @@ public class DistributedOpenstackNetworkStore
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected StorageService storageService;
+
+    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
+    protected PreCommitPortService preCommitPortService;
 
     private final ExecutorService eventExecutor = newSingleThreadExecutor(
             groupedThreads(this.getClass().getSimpleName(), "event-handler", log));
@@ -255,6 +262,38 @@ public class DistributedOpenstackNetworkStore
 
     @Override
     public Port removePort(String portId) {
+
+        Port port = osPortStore.asJavaMap().get(portId);
+
+        if (port == null) {
+            return null;
+        }
+
+        eventExecutor.execute(() ->
+                notifyDelegate(new OpenstackNetworkEvent(
+                        OPENSTACK_PORT_PRE_REMOVE,
+                        network(port.getNetworkId()), port))
+        );
+
+        log.debug("Prepare OpenStack port remove");
+
+        long timeoutExpiredMs = System.currentTimeMillis() + TIMEOUT_MS;
+
+        while (true) {
+
+            long waitMs = timeoutExpiredMs - System.currentTimeMillis();
+
+            if (preCommitPortService.subscriberCountByEventType(
+                    portId, OPENSTACK_PORT_PRE_REMOVE) == 0) {
+                break;
+            }
+
+            if (waitMs <= 0) {
+                log.debug("Timeout waiting for port removal.");
+                break;
+            }
+        }
+
         Versioned<Port> osPort = osPortStore.remove(portId);
         return osPort == null ? null : osPort.value();
     }

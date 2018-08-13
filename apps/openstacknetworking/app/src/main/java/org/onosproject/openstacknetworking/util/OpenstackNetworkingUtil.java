@@ -15,15 +15,20 @@
  */
 package org.onosproject.openstacknetworking.util;
 
+import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Strings;
 import org.onosproject.cfg.ConfigProperty;
 import org.onosproject.net.DeviceId;
+import org.onosproject.net.device.DeviceService;
 import org.onosproject.openstacknetworking.api.InstancePort;
 import org.onosproject.openstacknetworking.api.OpenstackNetworkService;
 import org.onosproject.openstacknetworking.api.OpenstackRouterAdminService;
+import org.onosproject.openstacknetworking.impl.DefaultInstancePort;
 import org.onosproject.openstacknode.api.OpenstackAuth;
 import org.onosproject.openstacknode.api.OpenstackAuth.Perspective;
 import org.onosproject.openstacknode.api.OpenstackNode;
@@ -55,12 +60,15 @@ import java.security.cert.X509Certificate;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 
 import static com.fasterxml.jackson.databind.SerializationFeature.INDENT_OUTPUT;
+import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Strings.isNullOrEmpty;
+import static org.onosproject.net.AnnotationKeys.PORT_NAME;
 import static org.onosproject.openstacknetworking.api.Constants.PCISLOT;
 import static org.onosproject.openstacknetworking.api.Constants.PCI_VENDOR_INFO;
 import static org.onosproject.openstacknetworking.api.Constants.portNamePrefixMap;
@@ -71,7 +79,7 @@ import static org.openstack4j.core.transport.ObjectMapperSingleton.getContext;
  */
 public final class OpenstackNetworkingUtil {
 
-    protected static final Logger log = LoggerFactory.getLogger(OpenstackNetworkingUtil.class);
+    private static final Logger log = LoggerFactory.getLogger(OpenstackNetworkingUtil.class);
 
     private static final int HEX_RADIX = 16;
     private static final String ZERO_FUNCTION_NUMBER = "0";
@@ -131,7 +139,8 @@ public final class OpenstackNetworkingUtil {
                     .writeValueAsString(entity);
             log.trace(strModelEntity);
             return (ObjectNode) mapper.readTree(strModelEntity.getBytes());
-        } catch (Exception e) {
+        } catch (IOException e) {
+            log.error("IOException occurred because of {}", e.toString());
             throw new IllegalStateException();
         }
     }
@@ -156,6 +165,7 @@ public final class OpenstackNetworkingUtil {
                 return fip;
             }
         }
+
         return null;
     }
 
@@ -282,13 +292,13 @@ public final class OpenstackNetworkingUtil {
      * @return interface name
      */
     public static String getIntfNameFromPciAddress(Port port) {
-
-        if (port.getProfile() == null) {
+        if (port.getProfile() == null || port.getProfile().isEmpty()) {
             log.error("Port profile is not found");
             return null;
         }
 
-        if (port.getProfile() != null && port.getProfile().get(PCISLOT) == null) {
+        if (!port.getProfile().containsKey(PCISLOT) ||
+                Strings.isNullOrEmpty(port.getProfile().get(PCISLOT).toString())) {
             log.error("Failed to retrieve the interface name because of no pci_slot information from the port");
             return null;
         }
@@ -310,8 +320,9 @@ public final class OpenstackNetworkingUtil {
 
         String vendorInfoForPort = String.valueOf(port.getProfile().get(PCI_VENDOR_INFO));
 
-        if (vendorInfoForPort == null) {
-            log.error("Failed to retrieve the interface name because of no pci vendor information from the port");
+        if (!portNamePrefixMap().containsKey(vendorInfoForPort)) {
+            log.error("Failed to retrieve the interface name because of no port name prefix for vendor ID {}",
+                    vendorInfoForPort);
             return null;
         }
         String portNamePrefix = portNamePrefixMap().get(vendorInfoForPort);
@@ -324,6 +335,22 @@ public final class OpenstackNetworkingUtil {
         }
 
         return intfName;
+    }
+
+    /**
+     * Check if the given interface is added to the given device or not.
+     *
+     * @param deviceId device ID
+     * @param intfName interface name
+     * @param deviceService device service
+     * @return true if the given interface is added to the given device or false otherwise
+     */
+    public static boolean hasIntfAleadyInDevice(DeviceId deviceId, String intfName, DeviceService deviceService) {
+        checkNotNull(deviceId);
+        checkNotNull(intfName);
+
+        return deviceService.getPorts(deviceId).stream()
+                .anyMatch(port -> Objects.equals(port.annotations().value(PORT_NAME), intfName));
     }
 
     /**
@@ -350,6 +377,7 @@ public final class OpenstackNetworkingUtil {
                     adminService.addRouterInterface(rIface);
                 }
             } catch (IOException ignore) {
+                log.error("Exception occurred because of {}", ignore.toString());
             }
         });
     }
@@ -368,6 +396,29 @@ public final class OpenstackNetworkingUtil {
     }
 
     /**
+     * Prints out the JSON string in pretty format.
+     *
+     * @param mapper        Object mapper
+     * @param jsonString    JSON string
+     * @return pretty formatted JSON string
+     */
+    public static String prettyJson(ObjectMapper mapper, String jsonString) {
+        try {
+            Object jsonObject = mapper.readValue(jsonString, Object.class);
+            return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(jsonObject);
+        } catch (JsonParseException e) {
+            log.debug("JsonParseException caused by {}", e);
+        } catch (JsonMappingException e) {
+            log.debug("JsonMappingException caused by {}", e);
+        } catch (JsonProcessingException e) {
+            log.debug("JsonProcessingException caused by {}", e);
+        } catch (IOException e) {
+            log.debug("IOException caused by {}", e);
+        }
+        return null;
+    }
+
+    /**
      * Checks the validity of ARP mode.
      *
      * @param arpMode ARP mode
@@ -380,6 +431,40 @@ public final class OpenstackNetworkingUtil {
         } else {
             return arpMode.equals(PROXY_MODE) || arpMode.equals(BROADCAST_MODE);
         }
+    }
+
+    /**
+     * Swaps current location with old location info.
+     * The revised instance port will be used to mod the flow rules after migration.
+     *
+     * @param instPort instance port
+     * @return location swapped instance port
+     */
+    public static InstancePort swapStaleLocation(InstancePort instPort) {
+        return DefaultInstancePort.builder()
+                .deviceId(instPort.oldDeviceId())
+                .portNumber(instPort.oldPortNumber())
+                .state(instPort.state())
+                .ipAddress(instPort.ipAddress())
+                .macAddress(instPort.macAddress())
+                .networkId(instPort.networkId())
+                .portId(instPort.portId())
+                .build();
+    }
+
+    /**
+     * Compares two router interfaces are equal.
+     * Will be remove this after Openstack4j implements equals.
+     *
+     * @param routerInterface1 router interface
+     * @param routerInterface2 router interface
+     * @return returns true if two router interfaces are equal, false otherwise
+     */
+    public static boolean routerInterfacesEquals(RouterInterface routerInterface1, RouterInterface routerInterface2) {
+        return Objects.equals(routerInterface1.getId(), routerInterface2.getId()) &&
+                Objects.equals(routerInterface1.getPortId(), routerInterface2.getPortId()) &&
+                Objects.equals(routerInterface1.getSubnetId(), routerInterface2.getSubnetId()) &&
+                Objects.equals(routerInterface1.getTenantId(), routerInterface2.getTenantId());
     }
 
     /**

@@ -97,6 +97,7 @@ import static org.onosproject.openstacknetworking.api.Constants.PRIORITY_STATEFU
 import static org.onosproject.openstacknetworking.api.Constants.PRIORITY_SWITCHING_RULE;
 import static org.onosproject.openstacknetworking.api.Constants.ROUTING_TABLE;
 import static org.onosproject.openstacknetworking.api.Constants.STAT_OUTBOUND_TABLE;
+import static org.onosproject.openstacknetworking.api.InstancePort.State.ACTIVE;
 import static org.onosproject.openstacknetworking.util.RulePopulatorUtil.buildExtension;
 import static org.onosproject.openstacknode.api.OpenstackNode.NodeType.COMPUTE;
 import static org.onosproject.openstacknode.api.OpenstackNode.NodeType.GATEWAY;
@@ -215,7 +216,7 @@ public class OpenstackRoutingHandler {
         });
 
         ExternalPeerRouter externalPeerRouter = osNetworkAdminService.externalPeerRouter(exGateway);
-        VlanId vlanId = externalPeerRouter == null ? VlanId.NONE : externalPeerRouter.externalPeerRouterVlanId();
+        VlanId vlanId = externalPeerRouter == null ? VlanId.NONE : externalPeerRouter.vlanId();
 
         if (exGateway == null) {
             deleteUnassociatedExternalPeerRouter();
@@ -240,12 +241,12 @@ public class OpenstackRoutingHandler {
 
             osNetworkAdminService.externalPeerRouters().stream()
                     .filter(externalPeerRouter ->
-                            !routerIps.contains(externalPeerRouter.externalPeerRouterIp().toString()))
+                            !routerIps.contains(externalPeerRouter.ipAddress().toString()))
                     .forEach(externalPeerRouter -> {
                         osNetworkAdminService
-                                .deleteExternalPeerRouter(externalPeerRouter.externalPeerRouterIp().toString());
+                                .deleteExternalPeerRouter(externalPeerRouter.ipAddress().toString());
                         log.trace("Deleted unassociated external peer router {}",
-                                externalPeerRouter.externalPeerRouterIp().toString());
+                                externalPeerRouter.ipAddress().toString());
                     });
         } catch (Exception e) {
             log.error("Exception occurred because of {}", e.toString());
@@ -353,6 +354,8 @@ public class OpenstackRoutingHandler {
         osNodeService.completeNodes(OpenstackNode.NodeType.GATEWAY)
                 .forEach(gwNode -> {
                         instancePortService.instancePorts(netId)
+                                .stream()
+                                .filter(port -> port.state() == ACTIVE)
                                 .forEach(port -> setRulesForSnatIngressRule(gwNode.intgBridge(),
                                     Long.parseLong(osNet.getProviderSegID()),
                                     IpPrefix.valueOf(port.ipAddress(), 32),
@@ -748,19 +751,6 @@ public class OpenstackRoutingHandler {
                 .matchEthType(Ethernet.TYPE_IPV4)
                 .matchIPDst(dstIp.getIp4Address().toIpPrefix());
 
-        switch (networkMode) {
-            case VXLAN:
-                sBuilder.matchTunnelId(Long.valueOf(segmentId));
-                break;
-
-            case VLAN:
-                sBuilder.matchVlanId(VlanId.vlanId(segmentId));
-                break;
-
-            default:
-                break;
-        }
-
         TrafficTreatment.Builder tBuilder = DefaultTrafficTreatment.builder();
 
         switch (networkMode) {
@@ -1072,30 +1062,39 @@ public class OpenstackRoutingHandler {
         public void event(InstancePortEvent event) {
             InstancePort instPort = event.subject();
             switch (event.type()) {
-                case OPENSTACK_INSTANCE_PORT_UPDATED:
                 case OPENSTACK_INSTANCE_PORT_DETECTED:
-                    eventExecutor.execute(() -> {
-                        log.info("RoutingHandler: Instance port detected MAC:{} IP:{}",
-                                instPort.macAddress(),
-                                instPort.ipAddress());
-                        instPortDetected(event.subject());
-                    });
+                case OPENSTACK_INSTANCE_PORT_UPDATED:
+                    log.info("RoutingHandler: Instance port detected MAC:{} IP:{}",
+                                                            instPort.macAddress(),
+                                                            instPort.ipAddress());
+
+                    eventExecutor.execute(() -> instPortDetected(event.subject()));
+
                     break;
                 case OPENSTACK_INSTANCE_PORT_VANISHED:
-                    eventExecutor.execute(() -> {
-                        log.info("RoutingHandler: Instance port vanished MAC:{} IP:{}",
-                                instPort.macAddress(),
-                                instPort.ipAddress());
-                        instPortRemoved(event.subject());
-                    });
+                    log.info("RoutingHandler: Instance port vanished MAC:{} IP:{}",
+                                                            instPort.macAddress(),
+                                                            instPort.ipAddress());
+
+                    eventExecutor.execute(() -> instPortRemoved(event.subject()));
+
+                    break;
+                case OPENSTACK_INSTANCE_MIGRATION_STARTED:
+                    log.info("RoutingHandler: Migration started for MAC:{} IP:{}",
+                                                            instPort.macAddress(),
+                                                            instPort.ipAddress());
+
+                    eventExecutor.execute(() -> instPortDetected(instPort));
+
                     break;
                 case OPENSTACK_INSTANCE_MIGRATION_ENDED:
+                    log.info("RoutingHandler: Migration finished for MAC:{} IP:{}",
+                                                            instPort.macAddress(),
+                                                            instPort.ipAddress());
                     eventExecutor.execute(() -> {
-                        log.info("RoutingHandler: Instance port vanished MAC:{} IP:{} due to VM migration",
-                                instPort.macAddress(),
-                                instPort.ipAddress());
                         // TODO: need to reconfigure rules to point to update VM
                     });
+
                     break;
                 default:
                     break;

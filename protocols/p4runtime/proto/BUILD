@@ -1,24 +1,61 @@
 load("//tools/build/bazel:osgi_java_library.bzl", "wrapped_osgi_jar")
+load("@io_grpc_grpc_java//:java_grpc_library.bzl", "java_grpc_library")
 
-java_proto_library(
-    name = "p4_runtime_java_proto",
+GRPC_DEPS = [
+    "@io_grpc_grpc_java//stub",
+    "@io_grpc_grpc_java//core",
+    "@io_grpc_grpc_java//protobuf",
+]
+
+PROTOBUF_DEPS = [
+    "@com_google_protobuf//:protobuf_java",
+]
+
+wrapped_osgi_jar(
+    name = "p4config_java_proto",
+    jar = "@com_github_p4lang_pi//:p4config_java_proto_native",
+    deps = PROTOBUF_DEPS,
     visibility = ["//visibility:public"],
-    deps = ["@p4lang_pi//:p4_runtime_proto"],
 )
 
 wrapped_osgi_jar(
-    name = "rpc_java_proto-osgi",
-    jar = "@google_rpc//:rpc_java_proto",
+    name = "p4data_java_proto",
+    jar = "@com_github_p4lang_p4runtime//:p4data_java_proto_native",
+    deps = PROTOBUF_DEPS,
     visibility = ["//visibility:public"],
-    deps = CORE_DEPS + ["@protobuf_java_3_2_0//jar"],
 )
 
 wrapped_osgi_jar(
-    name = "p4_runtime_java_proto-osgi",
-    jar = ":p4_runtime_java_proto",
+    name = "p4types_java_proto",
+    jar = "@com_github_p4lang_p4runtime//:p4types_java_proto_native",
+    deps = PROTOBUF_DEPS,
     visibility = ["//visibility:public"],
-    deps = CORE_DEPS + [
-        "@protobuf_java_3_2_0//jar",
-        "@google_rpc//:rpc_java_proto",
-    ],
+)
+
+wrapped_osgi_jar(
+    name = "p4info_java_proto",
+    jar = "@com_github_p4lang_p4runtime//:p4info_java_proto_native",
+    deps = PROTOBUF_DEPS,
+    visibility = ["//visibility:public"],
+)
+
+wrapped_osgi_jar(
+    name = "p4runtime_java_proto",
+    jar = "@com_github_p4lang_p4runtime//:p4runtime_java_proto_native",
+    deps = PROTOBUF_DEPS,
+    visibility = ["//visibility:public"],
+)
+
+wrapped_osgi_jar(
+    name = "p4runtime_java_grpc",
+    jar = "@com_github_p4lang_p4runtime//:p4runtime_java_grpc_native",
+    deps = GRPC_DEPS,
+    visibility = ["//visibility:public"],
+)
+
+wrapped_osgi_jar(
+    name = "status_java_proto",
+    jar = "@com_github_googleapis//:status_java_proto_native",
+    deps = PROTOBUF_DEPS,
+    visibility = ["//visibility:public"],
 )

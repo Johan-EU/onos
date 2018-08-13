@@ -29,6 +29,7 @@ import org.onlab.packet.DHCP;
 import org.onlab.packet.Ethernet;
 import org.onlab.packet.IPv4;
 import org.onlab.packet.Ip4Address;
+import org.onlab.packet.IpAddress;
 import org.onlab.packet.IpPrefix;
 import org.onlab.packet.MacAddress;
 import org.onlab.packet.TpPort;
@@ -61,6 +62,7 @@ import org.onosproject.openstacknode.api.OpenstackNodeListener;
 import org.onosproject.openstacknode.api.OpenstackNodeService;
 import org.openstack4j.model.network.HostRoute;
 import org.openstack4j.model.network.IP;
+import org.openstack4j.model.network.Network;
 import org.openstack4j.model.network.Port;
 import org.openstack4j.model.network.Subnet;
 import org.osgi.service.component.ComponentContext;
@@ -71,6 +73,7 @@ import java.util.Dictionary;
 import java.util.List;
 import java.util.Objects;
 
+import static com.google.common.base.Preconditions.checkNotNull;
 import static org.onlab.packet.DHCP.DHCPOptionCode.OptionCode_BroadcastAddress;
 import static org.onlab.packet.DHCP.DHCPOptionCode.OptionCode_Classless_Static_Route;
 import static org.onlab.packet.DHCP.DHCPOptionCode.OptionCode_DHCPServerIp;
@@ -96,8 +99,8 @@ public class OpenstackSwitchingDhcpHandler {
     protected final Logger log = getLogger(getClass());
 
     private static final String DHCP_SERVER_MAC = "dhcpServerMac";
-    private static final String DHCP_DATA_MTU = "dhcpDataMtu";
-    private static final Ip4Address DEFAULT_DNS = Ip4Address.valueOf("8.8.8.8");
+    private static final Ip4Address DEFAULT_PRIMARY_DNS = Ip4Address.valueOf("8.8.8.8");
+    private static final Ip4Address DEFAULT_SECONDARY_DNS = Ip4Address.valueOf("8.8.4.4");
     private static final byte PACKET_TTL = (byte) 127;
     // TODO add MTU, static route option codes to ONOS DHCP and remove here
     private static final byte DHCP_OPTION_MTU = (byte) 26;
@@ -107,7 +110,7 @@ public class OpenstackSwitchingDhcpHandler {
     private static final int DHCP_DATA_MTU_DEFAULT = 1450;
     private static final int OCTET_BIT_LENGTH = 8;
     private static final int V4_BYTE_SIZE = 4;
-    private static final int V4_CIDR_LOWER_BOUND = 0;
+    private static final int V4_CIDR_LOWER_BOUND = -1;
     private static final int V4_CIDR_UPPER_BOUND = 33;
     private static final int PADDING_SIZE = 4;
 
@@ -142,8 +145,6 @@ public class OpenstackSwitchingDhcpHandler {
             label = "Fake MAC address for virtual network subnet gateway")
     private String dhcpServerMac = DEFAULT_GATEWAY_MAC_STR;
 
-    @Property(name = DHCP_DATA_MTU, intValue = DHCP_DATA_MTU_DEFAULT,
-            label = "DHCP data Maximum Transmission Unit")
     private int dhcpDataMtu = DHCP_DATA_MTU_DEFAULT;
 
     private final PacketProcessor packetProcessor = new InternalPacketProcessor();
@@ -178,17 +179,11 @@ public class OpenstackSwitchingDhcpHandler {
     protected void modified(ComponentContext context) {
         Dictionary<?, ?> properties = context.getProperties();
         String updatedMac;
-        Integer updateMtu;
 
         updatedMac = Tools.get(properties, DHCP_SERVER_MAC);
-        updateMtu = Tools.getIntegerProperty(properties, DHCP_DATA_MTU);
 
         if (!Strings.isNullOrEmpty(updatedMac) && !updatedMac.equals(dhcpServerMac)) {
             dhcpServerMac = updatedMac;
-        }
-
-        if (updateMtu != null && updateMtu != dhcpDataMtu) {
-            dhcpDataMtu = updateMtu;
         }
 
         log.info("Modified");
@@ -394,15 +389,40 @@ public class OpenstackSwitchingDhcpHandler {
 
             // domain server
             option = new DhcpOption();
+
+            List<String> dnsServers = osSubnet.getDnsNames();
             option.setCode(OptionCode_DomainServer.getValue());
-            option.setLength((byte) 4);
-            option.setData(DEFAULT_DNS.toOctets());
+
+            if (dnsServers.isEmpty()) {
+                option.setLength((byte) 8);
+                ByteBuffer dnsByteBuf = ByteBuffer.allocate(8);
+                dnsByteBuf.put(DEFAULT_PRIMARY_DNS.toOctets());
+                dnsByteBuf.put(DEFAULT_SECONDARY_DNS.toOctets());
+
+                option.setData(dnsByteBuf.array());
+            } else {
+                int dnsLength = 4 * dnsServers.size();
+
+                option.setLength((byte) dnsLength);
+
+                ByteBuffer dnsByteBuf = ByteBuffer.allocate(8);
+
+                for (int i = 0; i < dnsServers.size(); i++) {
+                    dnsByteBuf.put(IpAddress.valueOf(dnsServers.get(i)).toOctets());
+                }
+                option.setData(dnsByteBuf.array());
+            }
+
             options.add(option);
 
             option = new DhcpOption();
             option.setCode(DHCP_OPTION_MTU);
             option.setLength((byte) 2);
-            option.setData(ByteBuffer.allocate(2).putShort((short) dhcpDataMtu).array());
+            Network osNetwork = osNetworkService.network(osSubnet.getNetworkId());
+            checkNotNull(osNetwork);
+            checkNotNull(osNetwork.getMTU());
+
+            option.setData(ByteBuffer.allocate(2).putShort(osNetwork.getMTU().shortValue()).array());
             options.add(option);
 
             // classless static route
@@ -435,12 +455,15 @@ public class OpenstackSwitchingDhcpHandler {
                 options.add(option);
             }
 
-            // router address
-            option = new DhcpOption();
-            option.setCode(OptionCode_RouterAddress.getValue());
-            option.setLength((byte) 4);
-            option.setData(Ip4Address.valueOf(osSubnet.getGateway()).toOctets());
-            options.add(option);
+            // Sets the default router address up.
+            // Performs only if the gateway is set in subnet.
+            if (!Strings.isNullOrEmpty(osSubnet.getGateway())) {
+                option = new DhcpOption();
+                option.setCode(OptionCode_RouterAddress.getValue());
+                option.setLength((byte) 4);
+                option.setData(Ip4Address.valueOf(osSubnet.getGateway()).toOctets());
+                options.add(option);
+            }
 
             // end option
             option = new DhcpOption();
@@ -463,8 +486,7 @@ public class OpenstackSwitchingDhcpHandler {
                     throw new IllegalArgumentException("Illegal CIDR length value!");
                 }
 
-                for (int i = 1; i <= V4_BYTE_SIZE; i++) {
-
+                for (int i = 0; i <= V4_BYTE_SIZE; i++) {
                     if (preFixLen == Math.min(preFixLen, i * OCTET_BIT_LENGTH)) {
                         size = size + i + 1 + PADDING_SIZE;
                         break;
@@ -484,12 +506,13 @@ public class OpenstackSwitchingDhcpHandler {
                     .split("/")[0]
                     .split("\\.");
 
-            // retrieve destination descriptor and put this to bytebuffer according to 3442
+            // retrieve destination descriptor and put this to bytebuffer according to RFC 3442
+            // ex) 0.0.0.0/0 -> 0
             // ex) 10.0.0.0/8 -> 8.10
             // ex) 10.17.0.0/16 -> 16.10.17
             // ex) 10.27.129.0/24 -> 24.10.27.129
             // ex) 10.229.0.128/25 -> 25.10.229.0.128
-            for (int i = 1; i <= V4_BYTE_SIZE; i++) {
+            for (int i = 0; i <= V4_BYTE_SIZE; i++) {
                 if (prefixLen == Math.min(prefixLen, i * OCTET_BIT_LENGTH)) {
                     byteBuffer = ByteBuffer.allocate(i + 1);
                     byteBuffer.put((byte) prefixLen);

@@ -19,11 +19,14 @@ import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 import { FormsModule } from '@angular/forms';
 import { DebugElement } from '@angular/core';
 import { By } from '@angular/platform-browser';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 
 import { LogService } from '../../../log.service';
 import { AppsComponent } from './apps.component';
 import { AppsDetailsComponent } from '../appsdetails/appsdetails.component';
+import { ConfirmComponent } from '../../../fw/layer/confirm/confirm.component';
 import { DialogService } from '../../../fw/layer/dialog.service';
+import { FlashComponent } from '../../../fw/layer/flash/flash.component';
 import { FnService } from '../../../fw/util/fn.service';
 import { IconComponent } from '../../../fw/svg/icon/icon.component';
 import { IconService } from '../../../fw/svg/icon.service';
@@ -35,6 +38,7 @@ import { TableFilterPipe } from '../../../fw/widget/tablefilter.pipe';
 import { UrlFnService } from '../../../fw/remote/urlfn.service';
 import { WebSocketService } from '../../../fw/remote/websocket.service';
 import { of } from 'rxjs';
+import { } from 'jasmine';
 
 class MockActivatedRoute extends ActivatedRoute {
     constructor(params: Params) {
@@ -43,31 +47,33 @@ class MockActivatedRoute extends ActivatedRoute {
     }
 }
 
-class MockDialogService {}
+class MockDialogService { }
 
-class MockFnService {}
+class MockFnService { }
+
+class MockHttpClient {}
 
 class MockIconService {
-    loadIconDef() {}
+    loadIconDef() { }
 }
 
-class MockKeyService {}
+class MockKeyService { }
 
 class MockLoadingService {
-    startAnim() {}
-    stop() {}
-    waiting() {}
+    startAnim() { }
+    stop() { }
+    waiting() { }
 }
 
-class MockThemeService {}
+class MockThemeService { }
 
-class MockUrlFnService {}
+class MockUrlFnService { }
 
 class MockWebSocketService {
-    createWebSocket() {}
+    createWebSocket() { }
     isConnected() { return false; }
-    unbindHandlers() {}
-    bindHandlers() {}
+    unbindHandlers() { }
+    bindHandlers() { }
 }
 
 /**
@@ -85,21 +91,21 @@ describe('AppsComponent', () => {
             test: 'test1'
         }
     };
-    const mockLion = (key) =>  {
+    const mockLion = (key) => {
         return bundleObj[key] || '%' + key + '%';
     };
 
     beforeEach(async(() => {
         const logSpy = jasmine.createSpyObj('LogService', ['info', 'debug', 'warn', 'error']);
-        ar = new MockActivatedRoute({'debug': 'txrx'});
+        ar = new MockActivatedRoute({ 'debug': 'txrx' });
 
         windowMock = <any>{
-            location: <any> {
+            location: <any>{
                 hostname: 'foo',
                 host: 'foo',
                 port: '80',
                 protocol: 'http',
-                search: { debug: 'true'},
+                search: { debug: 'true' },
                 href: 'ws://foo:123/onos/ui/websock/path',
                 absUrl: 'ws://foo:123/onos/ui/websock/path'
             }
@@ -108,13 +114,22 @@ describe('AppsComponent', () => {
 
         TestBed.configureTestingModule({
             imports: [ BrowserAnimationsModule, FormsModule ],
-            declarations: [ AppsComponent, IconComponent, AppsDetailsComponent, TableFilterPipe ],
+            declarations: [
+                AppsComponent,
+                ConfirmComponent,
+                IconComponent,
+                AppsDetailsComponent,
+                TableFilterPipe,
+                FlashComponent
+            ],
             providers: [
                 { provide: DialogService, useClass: MockDialogService },
                 { provide: FnService, useValue: fs },
+                { provide: HttpClient, useClass: MockHttpClient },
                 { provide: IconService, useClass: MockIconService },
                 { provide: KeyService, useClass: MockKeyService },
-                { provide: LionService, useFactory: (() => {
+                {
+                    provide: LionService, useFactory: (() => {
                         return {
                             bundle: ((bundleId) => mockLion),
                             ubercache: new Array(),
@@ -130,7 +145,7 @@ describe('AppsComponent', () => {
                 { provide: 'Window', useValue: windowMock },
             ]
         })
-        .compileComponents();
+            .compileComponents();
         logServiceSpy = TestBed.get(LogService);
     }));
 

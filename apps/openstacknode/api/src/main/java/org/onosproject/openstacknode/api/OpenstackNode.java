@@ -50,6 +50,14 @@ public interface OpenstackNode {
     }
 
     /**
+     * List of valid data path types.
+     */
+    enum DatapathType {
+        NORMAL,
+        NETDEV
+    }
+
+    /**
      * Returns hostname of the node.
      *
      * @return hostname
@@ -157,6 +165,13 @@ public interface OpenstackNode {
     String uplinkPort();
 
     /**
+     * Returns the data path type.
+     *
+     * @return data path type; normal or netdev
+     */
+    DatapathType datapathType();
+
+    /**
      * Returns the uplink port number.
      *
      * @return uplink port number
@@ -206,6 +221,13 @@ public interface OpenstackNode {
      * @return customized controllers
      */
     Collection<ControllerInfo> controllers();
+
+    /**
+     * Returns the ssh authentication info.
+     *
+     * @return ssh authentication info
+     */
+    OpenstackSshAuth sshAuthInfo();
 
     /**
      * Builder of new node entities.
@@ -314,6 +336,22 @@ public interface OpenstackNode {
          * @return openstack node builder
          */
         Builder endPoint(String endPoint);
+
+        /**
+         * Returns openstack node builder with supplied ssh authentication info.
+         *
+         * @param sshAuth ssh authentication info
+         * @return openstack node builder
+         */
+        Builder sshAuthInfo(OpenstackSshAuth sshAuth);
+
+        /**
+         * Returns openstack node builder with supplied data path type.
+         *
+         * @param datapathType data path type
+         * @return openstack node builder
+         */
+        Builder datapathType(DatapathType datapathType);
     }
 }
 

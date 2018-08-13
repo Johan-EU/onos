@@ -25,6 +25,7 @@ import java.util.Map;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
+import static org.onlab.junit.ImmutableClassChecker.assertThatClassIsImmutable;
 
 /**
  * Unit tests for DefaultInfluxDbTelemetryConfig class.
@@ -39,6 +40,9 @@ public final class DefaultInfluxDbTelemetryConfigTest {
 
     private static final String DATABASE_1 = "database1";
     private static final String DATABASE_2 = "database2";
+
+    private static final String MEASUREMENT_1 = "measurement1";
+    private static final String MEASUREMENT_2 = "measurement2";
 
     private static final String USERNAME_1 = "username1";
     private static final String USERNAME_2 = "username2";
@@ -58,6 +62,9 @@ public final class DefaultInfluxDbTelemetryConfigTest {
     private InfluxDbTelemetryConfig sameAsConfig1;
     private InfluxDbTelemetryConfig config2;
 
+    /**
+     * Initial setup for this unit test.
+     */
     @Before
     public void setup() {
 
@@ -72,6 +79,7 @@ public final class DefaultInfluxDbTelemetryConfigTest {
                 .withAddress(IP_ADDRESS_1)
                 .withPort(PORT_1)
                 .withDatabase(DATABASE_1)
+                .withMeasurement(MEASUREMENT_1)
                 .withUsername(USERNAME_1)
                 .withPassword(PASSWORD_1)
                 .withEnableBatch(ENABLE_BATCH_1)
@@ -82,6 +90,7 @@ public final class DefaultInfluxDbTelemetryConfigTest {
                 .withAddress(IP_ADDRESS_1)
                 .withPort(PORT_1)
                 .withDatabase(DATABASE_1)
+                .withMeasurement(MEASUREMENT_1)
                 .withUsername(USERNAME_1)
                 .withPassword(PASSWORD_1)
                 .withEnableBatch(ENABLE_BATCH_1)
@@ -92,6 +101,7 @@ public final class DefaultInfluxDbTelemetryConfigTest {
                 .withAddress(IP_ADDRESS_2)
                 .withPort(PORT_2)
                 .withDatabase(DATABASE_2)
+                .withMeasurement(MEASUREMENT_2)
                 .withUsername(USERNAME_2)
                 .withPassword(PASSWORD_2)
                 .withEnableBatch(ENABLE_BATCH_2)
@@ -99,6 +109,17 @@ public final class DefaultInfluxDbTelemetryConfigTest {
                 .build();
     }
 
+    /**
+     * Tests class immutability.
+     */
+    @Test
+    public void testImmutability() {
+        assertThatClassIsImmutable(DefaultInfluxDbTelemetryConfig.class);
+    }
+
+    /**
+     * Tests object equality.
+     */
     @Test
     public void testEquality() {
         new EqualsTester()
@@ -106,6 +127,9 @@ public final class DefaultInfluxDbTelemetryConfigTest {
                 .addEqualityGroup(config2).testEquals();
     }
 
+    /**
+     * Tests object construction.
+     */
     @Test
     public void testConstruction() {
         InfluxDbTelemetryConfig config = config1;
@@ -113,6 +137,7 @@ public final class DefaultInfluxDbTelemetryConfigTest {
         assertThat(config.address(), is(IP_ADDRESS_1));
         assertThat(config.port(), is(PORT_1));
         assertThat(config.database(), is(DATABASE_1));
+        assertThat(config.measurement(), is(MEASUREMENT_1));
         assertThat(config.username(), is(USERNAME_1));
         assertThat(config.password(), is(PASSWORD_1));
         assertThat(config.enableBatch(), is(ENABLE_BATCH_1));

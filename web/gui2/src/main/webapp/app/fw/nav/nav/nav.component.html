@@ -14,15 +14,39 @@
 ~ limitations under the License.
 -->
 <nav id="nav" [@navState]="ns.showNav">
-    <div class="nav-hdr">{{ lionFn('cat_platform') }}</div>
+    <div id="platform" class="nav-hdr">{{ lionFn('cat_platform') }}</div>
 
-    <a (click)="ns.hideNav()" routerLink="/apps" routerLinkActive="active">
-        <onos-icon iconId="nav_apps"></onos-icon>Apps</a>
+    <a id="app" (click)="ns.hideNav()" routerLink="/app" routerLinkActive="active">
+        <onos-icon iconId="nav_apps"></onos-icon> Applications</a>
 
-    <div class="nav-hdr">{{ lionFn('cat_network') }}</div>
+    <a id="settings" (click)="ns.hideNav()" routerLink="/settings" routerLinkActive="active">
+        <onos-icon iconId="nav_settings"></onos-icon> Settings</a>
 
-    <a (click)="ns.hideNav()" routerLink="/devices" routerLinkActive="active">
-        <onos-icon iconId="nav_devs"></onos-icon>Devices</a>
+    <a id="cluster" (click)="ns.hideNav()" routerLink="/cluster" routerLinkActive="active">
+        <onos-icon iconId="nav_cluster"></onos-icon> Cluster Nodes</a>
 
-    <div class="nav-hdr">{{ lionFn('cat_other') }}</div>
+    <a id="processor" (click)="ns.hideNav()" routerLink="/processor" routerLinkActive="active">
+        <onos-icon iconId="nav_processors"></onos-icon> Packet Processors</a>
+
+    <a id="partition" (click)="ns.hideNav()" routerLink="/partition" routerLinkActive="active">
+        <onos-icon iconId="nav_partitions"></onos-icon> Partitions</a>
+
+    <div id="network" class="nav-hdr">{{ lionFn('cat_network') }}</div>
+
+    <a id="device" (click)="ns.hideNav()" routerLink="/device" routerLinkActive="active">
+        <onos-icon iconId="nav_devs"></onos-icon> Devices</a>
+
+    <a id="link" (click)="ns.hideNav()" routerLink="/link" routerLinkActive="active">
+        <onos-icon iconId="nav_links"></onos-icon> Links</a>
+
+    <a id="host" (click)="ns.hideNav()" routerLink="/host" routerLinkActive="active">
+        <onos-icon iconId="nav_hosts"></onos-icon> Hosts</a>
+
+    <a id="intent" (click)="ns.hideNav()" routerLink="/intent" routerLinkActive="active">
+        <onos-icon iconId="nav_intents"></onos-icon> Intents</a>
+
+    <a id="tunnel" (click)="ns.hideNav()" routerLink="/tunnel" routerLinkActive="active">
+        <onos-icon iconId="nav_tunnels"></onos-icon> Tunnels</a>
+
+    <div id="other" class="nav-hdr">{{ lionFn('cat_other') }}</div>
 </nav>

@@ -13,15 +13,9 @@
 ~ See the License for the specific language governing permissions and
 ~ limitations under the License.
 -->
-<div id="flash">
-    <svg *ngIf="enabled" [attr.width]="width" [attr.height]="height" [attr.viewBox]="vbox" >
-        <g class="flashItem" [@flashState]="enabled?'active':'inactive'">
-            <text #flashtext>{{ message }}</text>
-            <rect [attr.opacity]="0.5" [attr.rx]="rx"
-                      [attr.x]="-flashtext.getBBox().width/2-xpad"
-                      [attr.y]="flashtext.getBBox().y-ypad"
-                      [attr.height]="flashtext.getBBox().height+ypad*2"
-                      [attr.width]="flashtext.getBBox().width+xpad*2"></rect>
-        </g>
-    </svg>
+<div id="flash" class="dialog" [ngClass]="warning?'warning':''" [@flashState]="visible">
+    <div id="flashBox" *ngIf="visible">
+        <p id="flashText">{{ message }}</p>
+        <div class="dialog-button" *ngIf="dwell>1200" (click)="closeNow()">Dismiss</div>
+    </div>
 </div>

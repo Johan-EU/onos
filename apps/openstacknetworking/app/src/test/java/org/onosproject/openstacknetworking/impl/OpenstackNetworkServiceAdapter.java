@@ -104,6 +104,26 @@ public class OpenstackNetworkServiceAdapter implements OpenstackNetworkService {
     }
 
     @Override
+    public IpPrefix ipPrefix(String portId) {
+        return null;
+    }
+
+    @Override
+    public String networkType(String netId) {
+        return null;
+    }
+
+    @Override
+    public String gatewayIp(String portId) {
+        return null;
+    }
+
+    @Override
+    public String segmentId(String netId) {
+        return null;
+    }
+
+    @Override
     public void addListener(OpenstackNetworkListener listener) {
 
     }

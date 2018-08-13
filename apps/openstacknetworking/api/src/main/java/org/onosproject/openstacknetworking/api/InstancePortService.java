@@ -68,16 +68,10 @@ public interface InstancePortService
     Set<InstancePort> instancePorts(String osNetId);
 
     /**
-     * Processes instance port addition event caused by VM migration.
+     * Returns the floating IP with the supplied instance port.
      *
-     * @param port instance port
+     * @param osPortId openstack port id
+     * @return openstack floating IP
      */
-    void migrationPortAdded(InstancePort port);
-
-    /**
-     * Processes instance port removal event caused by VM migration.
-     *
-     * @param port instance port
-     */
-    void migrationPortRemoved(InstancePort port);
+    IpAddress floatingIp(String osPortId);
 }

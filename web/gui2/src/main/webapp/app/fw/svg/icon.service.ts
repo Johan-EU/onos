@@ -40,6 +40,8 @@ export const glyphMapping = new Map<string, string>([
     ['nonzero', 'nonzero'],
     ['close', 'xClose'],
 
+    ['m_ports', 'm_ports'],
+
     ['topo', 'topo'],
 
     ['refresh', 'refresh'],
@@ -77,6 +79,7 @@ export const glyphMapping = new Map<string, string>([
     ['nav_settings', 'cog'],
     ['nav_cluster', 'node'],
     ['nav_processors', 'allTraffic'],
+    ['nav_partitions', 'unknown'],
 
     ['nav_topo', 'topo'],
     ['nav_topo2', 'm_cloud'],

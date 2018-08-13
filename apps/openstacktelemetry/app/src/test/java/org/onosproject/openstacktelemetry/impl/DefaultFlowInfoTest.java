@@ -29,6 +29,7 @@ import org.onosproject.openstacktelemetry.api.StatsInfo;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
+import static org.onlab.junit.ImmutableClassChecker.assertThatClassIsImmutable;
 
 /**
  * Unit tests for DefaultFlowInfo class.
@@ -58,8 +59,11 @@ public final class DefaultFlowInfoTest {
     private FlowInfo sameAsInfo1;
     private FlowInfo info2;
 
+    /**
+     * Initial setup for this unit test.
+     */
     @Before
-    public void setup() {
+    public void setUp() {
 
         FlowInfo.Builder builder1 = new DefaultFlowInfo.DefaultBuilder();
         FlowInfo.Builder builder2 = new DefaultFlowInfo.DefaultBuilder();
@@ -122,6 +126,17 @@ public final class DefaultFlowInfoTest {
                 .build();
     }
 
+    /**
+     * Tests class immutability.
+     */
+    @Test
+    public void testImmutability() {
+        assertThatClassIsImmutable(DefaultFlowInfo.class);
+    }
+
+    /**
+     * Tests object equality.
+     */
     @Test
     public void testEquality() {
         new EqualsTester()
@@ -129,6 +144,9 @@ public final class DefaultFlowInfoTest {
                 .addEqualityGroup(info2).testEquals();
     }
 
+    /**
+     * Tests object construction.
+     */
     @Test
     public void testConstruction() {
         FlowInfo info = info1;

@@ -240,6 +240,7 @@ ONOS_APPS = [
     '//incubator/protobuf/services/nb:onos-incubator-protobuf-services-nb-oar',
     '//apps/openstacknetworkingui:onos-apps-openstacknetworkingui-oar',
     '//apps/openstacktelemetry:onos-apps-openstacktelemetry-oar',
+    '//apps/openstacktroubleshoot:onos-apps-openstacktroubleshoot-oar',
     '//apps/openstackvtap:onos-apps-openstackvtap-oar',
     '//apps/p4-tutorial/pipeconf:onos-apps-p4-tutorial-pipeconf-oar',
     '//apps/p4-tutorial/mytunnel:onos-apps-p4-tutorial-mytunnel-oar',
@@ -255,6 +256,7 @@ ONOS_APPS = [
     '//apps/mcast:onos-apps-mcast-oar',
     '//apps/layout:onos-apps-layout-oar',
     '//apps/imr:onos-apps-imr-oar',
+    '//apps/inbandtelemetry/app:onos-apps-inbandtelemetry-app-oar',
     # nodemetrics application
     '//apps/nodemetrics:onos-apps-nodemetrics-oar',
     '//web/gui2:onos-web-gui2-oar',

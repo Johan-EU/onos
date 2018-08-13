@@ -1,19 +1,21 @@
+include_defs('//core/store/primitives/primitives.bucklet')
+
 COMPILE_DEPS = [
     '//lib:CORE_DEPS',
     '//lib:KRYO',
+    '//lib:ATOMIX',
     '//core/common:onos-core-common',
     '//incubator/api:onos-incubator-api',
     '//core/store/serializers:onos-core-serializers',
-    '//lib:atomix',
 ]
 
 TEST_DEPS = [
     '//lib:TEST',
     '//core/api:onos-api-tests',
-    '//lib:netty-handler',
-    '//lib:netty-buffer',
-    '//lib:netty-codec',
-    '//lib:netty-resolver',
+    '//lib:io_netty_netty_handler',
+    '//lib:io_netty_netty_buffer',
+    '//lib:io_netty_netty_codec',
+    '//lib:io_netty_netty_resolver',
     '//lib:commons-math3',
 ]
 
@@ -22,4 +24,5 @@ osgi_jar_with_tests (
     deps = COMPILE_DEPS,
     test_deps = TEST_DEPS,
     visibility = ['PUBLIC'],
+    import_packages = INCLUDE_PACKAGES + ',' + ALL_PACKAGES,
 )

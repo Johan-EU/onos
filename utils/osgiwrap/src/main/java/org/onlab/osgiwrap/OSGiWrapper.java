@@ -28,9 +28,11 @@ import com.google.common.base.MoreObjects;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
+import com.google.common.io.ByteStreams;
 import org.apache.felix.scrplugin.bnd.SCRDescriptorBndPlugin;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.FileVisitor;
@@ -44,8 +46,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.jar.JarEntry;
+import java.util.jar.JarInputStream;
 import java.util.jar.Manifest;
 
+import static com.google.common.io.Files.createParentDirs;
+import static com.google.common.io.Files.write;
 import static java.nio.file.Files.walkFileTree;
 
 /**
@@ -77,9 +83,11 @@ public class OSGiWrapper {
     private String webXmlRoot;
     private String destdir;
 
+    private String bundleClasspath;
+
     // FIXME should consider using Commons CLI, etc.
     public static void main(String[] args) {
-        if (args.length < 13) {
+        if (args.length < 14) {
             System.err.println("Not enough args");
             System.exit(1);
         }
@@ -98,18 +106,20 @@ public class OSGiWrapper {
         String webXmlRoot = args[11];
         String dynamicimportPackages = args[12];
         String destdir = args[13];
+        String bundleClasspath = args[14];
         String desc = Joiner.on(' ').join(Arrays.copyOfRange(args, 12, args.length));
 
         OSGiWrapper wrapper = new OSGiWrapper(jar, output, cp,
-                                              name, group,
-                                              version, license,
-                                              importPackages, exportPackages,
-                                              includeResources,
-                                              webContext,
-                                              webXmlRoot,
-                                              dynamicimportPackages,
-                                              desc,
-                                              destdir);
+                name, group,
+                version, license,
+                importPackages, exportPackages,
+                includeResources,
+                webContext,
+                webXmlRoot,
+                dynamicimportPackages,
+                desc,
+                destdir,
+                bundleClasspath);
         wrapper.log(wrapper + "\n");
         if (!wrapper.execute()) {
             System.err.printf("Error generating %s\n", name);
@@ -132,7 +142,8 @@ public class OSGiWrapper {
                        String webXmlRoot,
                        String dynamicimportPackages,
                        String bundleDescription,
-                       String destdir) {
+                       String destdir,
+                       String bundleClasspath) {
         this.inputJar = inputJar;
         this.classpath = Lists.newArrayList(classpath.split(":"));
         if (!this.classpath.contains(inputJar)) {
@@ -161,6 +172,8 @@ public class OSGiWrapper {
         this.webContext = webContext;
         this.webXmlRoot = webXmlRoot;
         this.destdir = destdir;
+
+        this.bundleClasspath = bundleClasspath;
     }
 
     private void setProperties(Analyzer analyzer) {
@@ -175,9 +188,6 @@ public class OSGiWrapper {
         //analyzer.setProperty("-provider-policy", "${range;[===,==+)}");
         //analyzer.setProperty("-consumer-policy", "${range;[===,==+)}");
 
-        // There are no good defaults so make sure you set the Import-Package
-        analyzer.setProperty(Analyzer.IMPORT_PACKAGE, importPackages);
-
         analyzer.setProperty(Analyzer.DYNAMICIMPORT_PACKAGE, dynamicimportPackages);
 
         // TODO include version in export, but not in import
@@ -188,16 +198,22 @@ public class OSGiWrapper {
             analyzer.setProperty(Analyzer.INCLUDE_RESOURCE, includeResources);
         }
 
+        // There are no good defaults so make sure you set the Import-Package
+        analyzer.setProperty(Analyzer.IMPORT_PACKAGE, importPackages);
+
         if (isWab()) {
             analyzer.setProperty(Analyzer.WAB, webXmlRoot);
             analyzer.setProperty("Web-ContextPath", webContext);
-            analyzer.setProperty(Analyzer.IMPORT_PACKAGE, "*,org.glassfish.jersey.servlet,org.jvnet.mimepull\n");
+            analyzer.setProperty(Analyzer.IMPORT_PACKAGE, importPackages +
+                    ",org.glassfish.jersey.servlet,org.jvnet.mimepull\n");
         }
     }
 
     public boolean execute() {
         Analyzer analyzer = new Builder();
         try {
+            // Extract the input jar contents into the specified output directory
+            expandJar(inputJar, new File(destdir));
 
             Jar jar = new Jar(new File(inputJar));  // where our data is
             analyzer.setJar(jar);                   // give bnd the contents
@@ -208,9 +224,6 @@ public class OSGiWrapper {
             analyzer.addClasspath(classpath);
 
             setProperties(analyzer);
-
-//            analyzer.setProperty("DESTDIR");
-//            analyzer.setBase();
 
             // ------------- let's begin... -------------------------
 
@@ -235,9 +248,6 @@ public class OSGiWrapper {
 
             // Calculate the manifest
             Manifest manifest = analyzer.calcManifest();
-            //OutputStream s = new FileOutputStream("/tmp/foo2.txt");
-            //manifest.write(s);
-            //s.close();
 
             if (analyzer.isOk()) {
                 analyzer.getJar().setManifest(manifest);
@@ -261,6 +271,26 @@ public class OSGiWrapper {
         }
     }
 
+    // Expands the specified jar file into the given directory
+    private void expandJar(String inputJar, File intoDir) throws IOException {
+        try (JarInputStream jis = new JarInputStream(new FileInputStream(inputJar))) {
+            JarEntry entry;
+            while ((entry = jis.getNextJarEntry()) != null) {
+                if (!entry.isDirectory()) {
+                    byte[] data = ByteStreams.toByteArray(jis);
+                    jis.closeEntry();
+                    if (!entry.getName().contains("..")) {
+                        File file = new File(intoDir, entry.getName());
+                        createParentDirs(file);
+                        write(data, file);
+                    } else {
+                        throw new IOException("Corrupt jar file");
+                    }
+                }
+            }
+        }
+    }
+
     private boolean isWab() {
         return !Objects.equals(webContext, NONE);
     }
@@ -273,8 +303,13 @@ public class OSGiWrapper {
         Jar dot = analyzer.getJar();
 
         log("wab %s", wab);
-        analyzer.setBundleClasspath("WEB-INF/classes," +
-                                    analyzer.getProperty(analyzer.BUNDLE_CLASSPATH));
+
+        String specifiedClasspath = this.bundleClasspath;
+        String bundleClasspath = "WEB-INF/classes";
+        if (specifiedClasspath != null) {
+            bundleClasspath += "," + specifiedClasspath;
+        }
+        analyzer.setBundleClasspath(bundleClasspath);
 
         Set<String> paths = new HashSet<>(dot.getResources().keySet());
 
@@ -344,7 +379,7 @@ public class OSGiWrapper {
             walkFileTree(sourceRootPath, visitor);
         } else {
             warn("Skipping resource in bundle %s: %s (File Not Found)\n",
-                 bundleSymbolicName, sourceRoot);
+                    bundleSymbolicName, sourceRoot);
         }
     }
 
@@ -389,6 +424,7 @@ public class OSGiWrapper {
                 .add("bundleVersion", bundleVersion)
                 .add("bundleDescription", bundleDescription)
                 .add("bundleLicense", bundleLicense)
+                .add("bundleClassPath", bundleClasspath)
                 .toString();
 
     }

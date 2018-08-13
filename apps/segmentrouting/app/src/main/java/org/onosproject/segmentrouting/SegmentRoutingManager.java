@@ -247,6 +247,10 @@ public class SegmentRoutingManager implements SegmentRoutingService {
             label = "Enable this to respond to ARP/NDP requests from unknown hosts.")
     boolean respondToUnknownHosts = true;
 
+    @Property(name = "routeDoubleTaggedHosts", boolValue = false,
+            label = "Program flows and groups to pop and route double tagged hosts")
+    boolean routeDoubleTaggedHosts = false;
+
     ArpHandler arpHandler = null;
     IcmpHandler icmpHandler = null;
     IpHandler ipHandler = null;
@@ -628,6 +632,19 @@ public class SegmentRoutingManager implements SegmentRoutingService {
         if (expectRespondToUnknownHosts != respondToUnknownHosts) {
             respondToUnknownHosts = expectRespondToUnknownHosts;
             log.info("{} responding to ARPs/NDPs from unknown hosts", respondToUnknownHosts ? "Enabling" : "Disabling");
+        }
+
+        String strRouteDoubleTaggedHosts = Tools.get(properties, "routeDoubleTaggedHosts");
+        boolean expectRouteDoubleTaggedHosts = Boolean.parseBoolean(strRouteDoubleTaggedHosts);
+        if (expectRouteDoubleTaggedHosts != routeDoubleTaggedHosts) {
+            routeDoubleTaggedHosts = expectRouteDoubleTaggedHosts;
+            log.info("{} routing for double tagged hosts", routeDoubleTaggedHosts ? "Enabling" : "Disabling");
+
+            if (routeDoubleTaggedHosts) {
+                hostHandler.populateAllDoubleTaggedHost();
+            } else {
+                hostHandler.revokeAllDoubleTaggedHost();
+            }
         }
     }
 

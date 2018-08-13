@@ -17,7 +17,6 @@ package org.onosproject.openstacknetworking.impl;
 
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import org.apache.felix.scr.annotations.Activate;
 import org.apache.felix.scr.annotations.Component;
@@ -43,9 +42,9 @@ import org.onosproject.net.flow.TrafficTreatment;
 import org.onosproject.openstacknetworking.api.Constants;
 import org.onosproject.openstacknetworking.api.ExternalPeerRouter;
 import org.onosproject.openstacknetworking.api.InstancePort;
+import org.onosproject.openstacknetworking.api.InstancePortAdminService;
 import org.onosproject.openstacknetworking.api.InstancePortEvent;
 import org.onosproject.openstacknetworking.api.InstancePortListener;
-import org.onosproject.openstacknetworking.api.InstancePortService;
 import org.onosproject.openstacknetworking.api.OpenstackFlowRuleService;
 import org.onosproject.openstacknetworking.api.OpenstackNetworkEvent;
 import org.onosproject.openstacknetworking.api.OpenstackNetworkListener;
@@ -53,6 +52,7 @@ import org.onosproject.openstacknetworking.api.OpenstackNetworkService;
 import org.onosproject.openstacknetworking.api.OpenstackRouterAdminService;
 import org.onosproject.openstacknetworking.api.OpenstackRouterEvent;
 import org.onosproject.openstacknetworking.api.OpenstackRouterListener;
+import org.onosproject.openstacknetworking.api.PreCommitPortService;
 import org.onosproject.openstacknode.api.OpenstackNode;
 import org.onosproject.openstacknode.api.OpenstackNodeEvent;
 import org.onosproject.openstacknode.api.OpenstackNodeListener;
@@ -69,7 +69,6 @@ import org.openstack4j.openstack.networking.domain.NeutronFloatingIP;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
@@ -84,9 +83,11 @@ import static org.onosproject.openstacknetworking.api.Constants.PRIORITY_FLOATIN
 import static org.onosproject.openstacknetworking.api.Constants.ROUTING_TABLE;
 import static org.onosproject.openstacknetworking.api.InstancePortEvent.Type.OPENSTACK_INSTANCE_MIGRATION_ENDED;
 import static org.onosproject.openstacknetworking.api.InstancePortEvent.Type.OPENSTACK_INSTANCE_MIGRATION_STARTED;
+import static org.onosproject.openstacknetworking.api.OpenstackNetworkEvent.Type.OPENSTACK_PORT_PRE_REMOVE;
 import static org.onosproject.openstacknetworking.util.OpenstackNetworkingUtil.associatedFloatingIp;
 import static org.onosproject.openstacknetworking.util.OpenstackNetworkingUtil.getGwByComputeDevId;
 import static org.onosproject.openstacknetworking.util.OpenstackNetworkingUtil.isAssociatedWithVM;
+import static org.onosproject.openstacknetworking.util.OpenstackNetworkingUtil.swapStaleLocation;
 import static org.onosproject.openstacknetworking.util.RulePopulatorUtil.buildExtension;
 import static org.onosproject.openstacknode.api.OpenstackNode.NodeType.GATEWAY;
 
@@ -117,7 +118,7 @@ public class OpenstackRoutingFloatingIpHandler {
     protected OpenstackNodeService osNodeService;
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
-    protected InstancePortService instancePortService;
+    protected InstancePortAdminService instancePortService;
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected OpenstackRouterAdminService osRouterAdminService;
@@ -128,19 +129,16 @@ public class OpenstackRoutingFloatingIpHandler {
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
     protected OpenstackFlowRuleService osFlowRuleService;
 
+    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
+    protected PreCommitPortService preCommitPortService;
+
     private final ExecutorService eventExecutor = newSingleThreadExecutor(
             groupedThreads(this.getClass().getSimpleName(), "event-handler", log));
     private final OpenstackRouterListener floatingIpListener = new InternalFloatingIpListener();
     private final InstancePortListener instancePortListener = new InternalInstancePortListener();
     private final OpenstackNodeListener osNodeListener = new InternalNodeListener();
-    private final Map<String, DeviceId> migrationPool = Maps.newConcurrentMap();
     private final OpenstackNetworkListener osNetworkListener = new InternalOpenstackNetworkListener();
     private final InstancePortListener instPortListener = new InternalInstancePortListener();
-
-    private Map<String, Port> terminatedOsPorts = Maps.newConcurrentMap();
-    private Map<String, InstancePort> terminatedInstPorts = Maps.newConcurrentMap();
-    private Map<String, InstancePort> tobeRemovedInstPorts = Maps.newConcurrentMap();
-    private Map<String, NetFloatingIP> pendingInstPortIds = Maps.newConcurrentMap();
 
     private ApplicationId appId;
     private NodeId localNodeId;
@@ -176,6 +174,7 @@ public class OpenstackRoutingFloatingIpHandler {
     private void setFloatingIpRules(NetFloatingIP floatingIp, Port osPort,
                                     OpenstackNode gateway, boolean install) {
         Network osNet = osNetworkService.network(osPort.getNetworkId());
+
         if (osNet == null) {
             final String errorFormat = ERR_FLOW + "no network(%s) exists";
             final String error = String.format(errorFormat,
@@ -187,15 +186,6 @@ public class OpenstackRoutingFloatingIpHandler {
         MacAddress srcMac = MacAddress.valueOf(osPort.getMacAddress());
         log.trace("Mac address of openstack port: {}", srcMac);
         InstancePort instPort = instancePortService.instancePort(srcMac);
-
-        if (instPort == null) {
-            instPort = tobeRemovedInstPorts.get(osPort.getId());
-            tobeRemovedInstPorts.remove(osPort.getId());
-        }
-
-        if (instPort == null) {
-            instPort = terminatedInstPorts.get(osPort.getId());
-        }
 
         if (instPort == null) {
             final String errorFormat = ERR_FLOW + "no host(MAC:%s) found";
@@ -210,6 +200,16 @@ public class OpenstackRoutingFloatingIpHandler {
             throw new IllegalStateException(errorFormat);
         }
 
+        if (install) {
+            preCommitPortService.subscribePreCommit(osPort.getId(),
+                    OPENSTACK_PORT_PRE_REMOVE, this.getClass().getName());
+            log.info("Subscribed the port {} on listening pre-remove event", osPort.getId());
+        } else {
+            preCommitPortService.unsubscribePreCommit(osPort.getId(),
+                    OPENSTACK_PORT_PRE_REMOVE, this.getClass().getName());
+            log.info("Unsubscribed the port {} on listening pre-remove event", osPort.getId());
+        }
+
         updateComputeNodeRules(instPort, osNet, gateway, install);
         updateGatewayNodeRules(floatingIp, instPort, osNet, externalPeerRouter, gateway, install);
 
@@ -219,6 +219,7 @@ public class OpenstackRoutingFloatingIpHandler {
 
         // TODO: need to refactor setUpstreamRules if possible
         setUpstreamRules(floatingIp, osNet, instPort, externalPeerRouter, install);
+
         log.trace("Succeeded to set flow rules for floating ip {}:{} and install: {}",
                 floatingIp.getFloatingIpAddress(),
                 floatingIp.getFixedIpAddress(),
@@ -485,8 +486,8 @@ public class OpenstackRoutingFloatingIpHandler {
                 .setEthDst(instPort.macAddress())
                 .setIpDst(instPort.ipAddress().getIp4Address());
 
-        if (!externalPeerRouter.externalPeerRouterVlanId().equals(VlanId.NONE)) {
-            externalSelectorBuilder.matchVlanId(externalPeerRouter.externalPeerRouterVlanId()).build();
+        if (!externalPeerRouter.vlanId().equals(VlanId.NONE)) {
+            externalSelectorBuilder.matchVlanId(externalPeerRouter.vlanId()).build();
             externalTreatmentBuilder.popVlan();
         }
 
@@ -548,14 +549,14 @@ public class OpenstackRoutingFloatingIpHandler {
             TrafficTreatment.Builder tBuilder = DefaultTrafficTreatment.builder()
                     .setIpSrc(floating.getIp4Address())
                     .setEthSrc(instPort.macAddress())
-                    .setEthDst(externalPeerRouter.externalPeerRouterMac());
+                    .setEthDst(externalPeerRouter.macAddress());
 
             if (osNet.getNetworkType().equals(NetworkType.VLAN)) {
                 tBuilder.popVlan();
             }
 
-            if (!externalPeerRouter.externalPeerRouterVlanId().equals(VlanId.NONE)) {
-                tBuilder.pushVlan().setVlanId(externalPeerRouter.externalPeerRouterVlanId());
+            if (!externalPeerRouter.vlanId().equals(VlanId.NONE)) {
+                tBuilder.pushVlan().setVlanId(externalPeerRouter.vlanId());
             }
             osFlowRuleService.setRule(
                     appId,
@@ -611,9 +612,6 @@ public class OpenstackRoutingFloatingIpHandler {
         if (!Strings.isNullOrEmpty(osPort.getDeviceId())) {
 
             if (instancePortService.instancePort(osPort.getId()) == null) {
-                log.info("Try to associate the fip {} with a terminated VM",
-                        osFip.getFloatingIpAddress());
-                pendingInstPortIds.put(osPort.getId(), osFip);
                 return;
             }
 
@@ -623,10 +621,6 @@ public class OpenstackRoutingFloatingIpHandler {
 
     private void disassociateFloatingIp(NetFloatingIP osFip, String portId) {
         Port osPort = osNetworkService.port(portId);
-        if (osPort == null) {
-            osPort = terminatedOsPorts.get(portId);
-            terminatedOsPorts.remove(portId);
-        }
 
         if (osPort == null) {
             final String errorFormat = ERR_FLOW + "port(%s) not found";
@@ -638,22 +632,8 @@ public class OpenstackRoutingFloatingIpHandler {
         // set floating IP rules only if the port is associated to a VM
         if (!Strings.isNullOrEmpty(osPort.getDeviceId())) {
 
-            if (!tobeRemovedInstPorts.containsKey(osPort.getId()) &&
-                    terminatedInstPorts.containsKey(osPort.getId())) {
-                tobeRemovedInstPorts.put(osPort.getId(),
-                                    terminatedInstPorts.get(osPort.getId()));
-            }
-
             if (instancePortService.instancePort(osPort.getId()) == null) {
-
-                // in case there is pending instance port, we simply remove that
-                // port, otherwise, we directly go with rule removal
-                if (pendingInstPortIds.containsKey(osPort.getId())) {
-                    log.info("Try to disassociate the fip {} with a terminated VM",
-                            osFip.getFloatingIpAddress());
-                    pendingInstPortIds.remove(osPort.getId());
-                    return;
-                }
+                return;
             }
 
             setFloatingIpRules(osFip, osPort, null, false);
@@ -704,7 +684,17 @@ public class OpenstackRoutingFloatingIpHandler {
                     eventExecutor.execute(() -> {
                         NetFloatingIP osFip = event.floatingIp();
                         if (!Strings.isNullOrEmpty(osFip.getPortId())) {
-                            disassociateFloatingIp(osFip, osFip.getPortId());
+                            // in case the floating IP is not associated with any port due to
+                            // port removal, we simply do not execute floating IP disassociation
+                            if (osNetworkService.port(osFip.getPortId()) != null) {
+                                disassociateFloatingIp(osFip, osFip.getPortId());
+                            }
+
+                            // since we skip floating IP disassociation, we need to
+                            // manually unsubscribe the port pre-remove event
+                            preCommitPortService.unsubscribePreCommit(osFip.getPortId(),
+                                    OPENSTACK_PORT_PRE_REMOVE, this.getClass().getName());
+                            log.info("Unsubscribed the port {} on listening pre-remove event", osFip.getPortId());
                         }
                         log.info("Removed floating IP {}", osFip.getFloatingIpAddress());
                     });
@@ -753,23 +743,10 @@ public class OpenstackRoutingFloatingIpHandler {
                                 continue;
                             }
 
-                            // This is for handling a VM, which is associated
-                            // with a floating IP, was terminated case
-                            // in this case, we cannot obtain instance port
-                            // information from a terminated VM, we simply
-                            // construct a pending map where key is terminated
-                            // instance port ID while value is floating IP
-                            // address which supposed to be associated with the
-                            // terminated instance port.
-
-                            // Note that, at OPENSTACK_INSTANCE_PORT_DETECTED phase,
-                            // we will install floating IP related rules by
-                            // referring to the key and value stored in pending map
-                            if (!Strings.isNullOrEmpty(osPort.getDeviceId()) &&
-                                    instancePortService.instancePort(fip.getPortId()) == null) {
-                                pendingInstPortIds.put(fip.getPortId(), fip);
+                            if (instancePortService.instancePort(fip.getPortId()) == null) {
                                 continue;
                             }
+
                             setFloatingIpRules(fip, osPort, event.subject(), true);
                         }
                     });
@@ -863,29 +840,12 @@ public class OpenstackRoutingFloatingIpHandler {
                     if (instPort != null && instPort.portId() != null) {
                         String portId = instPort.portId();
 
-                        terminatedInstPorts.remove(portId);
-                        terminatedOsPorts.remove(portId);
-
                         Port port = osNetworkService.port(portId);
 
-                        if (pendingInstPortIds.containsKey(portId) && port != null) {
-                            setFloatingIpRules(pendingInstPortIds.get(portId),
-                                    port, null, true);
-                            pendingInstPortIds.remove(portId);
-                        }
-                    }
-
-                    break;
-
-                case OPENSTACK_INSTANCE_PORT_VANISHED:
-                    if (instPort != null && instPort.portId() != null) {
-                        String portId = instPort.portId();
-                        Port port = osNetworkService.port(portId);
-
-                        if (port != null) {
-                            terminatedInstPorts.put(portId, instPort);
-                            terminatedOsPorts.put(portId, port);
-                        }
+                        osRouterAdminService.floatingIps().stream()
+                                .filter(f -> f.getPortId() != null)
+                                .filter(f -> f.getPortId().equals(instPort.portId()))
+                                .forEach(f -> setFloatingIpRules(f, port, null, true));
                     }
 
                     break;
@@ -923,14 +883,13 @@ public class OpenstackRoutingFloatingIpHandler {
                         // corresponding compute node, we need to install new rule to
                         // the target compute node, and remove rules from original node
                         setComputeNodeToGatewayHelper(event.subject(), osNet, gateways, true);
-
-                        migrationPool.put(fip.getFloatingIpAddress(), event.subject().deviceId());
-
                     });
                     break;
                 case OPENSTACK_INSTANCE_MIGRATION_ENDED:
 
-                    fip = associatedFloatingIp(event.subject(), ips);
+                    InstancePort revisedInstPort = swapStaleLocation(event.subject());
+
+                    fip = associatedFloatingIp(revisedInstPort, ips);
 
                     if (fip == null) {
                         return;
@@ -956,9 +915,8 @@ public class OpenstackRoutingFloatingIpHandler {
                     // if it is true, we simply do not remove the rules, as
                     // it has been overwritten at port detention event
                     // if it is false, we will remove the rules
-                    DeviceId newDeviceId = migrationPool.get(fip.getFloatingIpAddress());
-                    DeviceId oldDeviceId = event.subject().deviceId();
-                    migrationPool.remove(fip.getFloatingIpAddress());
+                    DeviceId newDeviceId = event.subject().deviceId();
+                    DeviceId oldDeviceId = revisedInstPort.deviceId();
 
                     OpenstackNode oldGateway = getGwByComputeDevId(gateways, oldDeviceId);
                     OpenstackNode newGateway = getGwByComputeDevId(gateways, newDeviceId);
@@ -971,13 +929,13 @@ public class OpenstackRoutingFloatingIpHandler {
 
                         // We need to remove the old ComputeNodeToGateway rules from
                         // original compute node
-                        setComputeNodeToGatewayHelper(event.subject(), osNet, gateways, false);
+                        setComputeNodeToGatewayHelper(revisedInstPort, osNet, gateways, false);
 
                         // Since DownstreamExternal rules should only be placed in
                         // corresponding gateway node, we need to remove old rule from
                         // the corresponding gateway node
-                        setDownstreamExternalRulesHelper(fip, osNet,
-                                event.subject(), externalPeerRouter, gateways, false);
+                        setDownstreamExternalRulesHelper(fip, osNet, revisedInstPort,
+                                externalPeerRouter, gateways, false);
                     });
                     break;
                 default:
@@ -998,12 +956,14 @@ public class OpenstackRoutingFloatingIpHandler {
         @Override
         public void event(OpenstackNetworkEvent event) {
             switch (event.type()) {
+                case OPENSTACK_PORT_PRE_REMOVE:
+                    eventExecutor.execute(() ->
+                            updateFipStore(instancePortService.instancePort(event.port().getId()))
+                    );
+                    break;
                 case OPENSTACK_PORT_REMOVED:
-                    Port osPort = event.port();
-                    if (terminatedInstPorts.containsKey(osPort.getId())) {
-                        updateFipStore(terminatedInstPorts.get(osPort.getId()));
-                        terminatedInstPorts.remove(osPort.getId());
-                    }
+                    eventExecutor.execute(() ->
+                            instancePortService.removeInstancePort(event.port().getId()));
                     break;
                 default:
                     break;
@@ -1029,7 +989,6 @@ public class OpenstackRoutingFloatingIpHandler {
                     // invalidate bound fixed IP and port
                     neutronFip.setFixedIpAddress(null);
                     neutronFip.setPortId(null);
-                    tobeRemovedInstPorts.put(port.portId(), port);
 
                     // Following update will in turn trigger
                     // OPENSTACK_FLOATING_IP_DISASSOCIATED event

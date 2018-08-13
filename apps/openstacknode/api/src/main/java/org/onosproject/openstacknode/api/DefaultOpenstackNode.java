@@ -57,6 +57,8 @@ public class DefaultOpenstackNode implements OpenstackNode {
     private final Collection<ControllerInfo> controllers;
     private final OpenstackAuth auth;
     private final String endPoint;
+    private final OpenstackSshAuth sshAuth;
+    private final DatapathType datapathType;
 
     private static final String NOT_NULL_MSG = "Node % cannot be null";
 
@@ -77,6 +79,8 @@ public class DefaultOpenstackNode implements OpenstackNode {
      * @param controllers   customized controllers
      * @param auth          keystone authentication info
      * @param endPoint      openstack endpoint URL
+     * @param sshAuth       ssh authentication info
+     * @param datapathType  data path type
      */
     protected DefaultOpenstackNode(String hostname, NodeType type,
                                    DeviceId intgBridge,
@@ -88,7 +92,9 @@ public class DefaultOpenstackNode implements OpenstackNode {
                                    Collection<OpenstackPhyInterface> phyIntfs,
                                    Collection<ControllerInfo> controllers,
                                    OpenstackAuth auth,
-                                   String endPoint) {
+                                   String endPoint,
+                                   OpenstackSshAuth sshAuth,
+                                   DatapathType datapathType) {
         this.hostname = hostname;
         this.type = type;
         this.intgBridge = intgBridge;
@@ -101,6 +107,8 @@ public class DefaultOpenstackNode implements OpenstackNode {
         this.controllers = controllers;
         this.auth = auth;
         this.endPoint = endPoint;
+        this.sshAuth = sshAuth;
+        this.datapathType = datapathType;
     }
 
     @Override
@@ -141,6 +149,11 @@ public class DefaultOpenstackNode implements OpenstackNode {
     @Override
     public String uplinkPort() {
         return uplinkPort;
+    }
+
+    @Override
+    public DatapathType datapathType() {
+        return datapathType;
     }
 
     @Override
@@ -242,7 +255,9 @@ public class DefaultOpenstackNode implements OpenstackNode {
                     Objects.equals(phyIntfs, that.phyIntfs) &&
                     Objects.equals(controllers, that.controllers) &&
                     Objects.equals(auth, that.auth) &&
-                    Objects.equals(endPoint, that.endPoint);
+                    Objects.equals(endPoint, that.endPoint) &&
+                    Objects.equals(sshAuth, that.sshAuth) &&
+                    Objects.equals(datapathType, that.datapathType);
         }
         return false;
     }
@@ -259,7 +274,9 @@ public class DefaultOpenstackNode implements OpenstackNode {
                 phyIntfs,
                 controllers,
                 auth,
-                endPoint);
+                endPoint,
+                sshAuth,
+                datapathType);
     }
 
     @Override
@@ -277,6 +294,8 @@ public class DefaultOpenstackNode implements OpenstackNode {
                 .add("controllers", controllers)
                 .add("auth", auth)
                 .add("endpoint", endPoint)
+                .add("sshAuth", sshAuth)
+                .add("datapathType", datapathType)
                 .toString();
     }
 
@@ -295,6 +314,8 @@ public class DefaultOpenstackNode implements OpenstackNode {
                 .controllers(controllers)
                 .authentication(auth)
                 .endPoint(endPoint)
+                .sshAuthInfo(sshAuth)
+                .datapathType(datapathType)
                 .build();
     }
 
@@ -316,6 +337,11 @@ public class DefaultOpenstackNode implements OpenstackNode {
         }
 
         return controllers;
+    }
+
+    @Override
+    public OpenstackSshAuth sshAuthInfo() {
+        return sshAuth;
     }
 
     @Override
@@ -375,7 +401,9 @@ public class DefaultOpenstackNode implements OpenstackNode {
                 .phyIntfs(osNode.phyIntfs())
                 .controllers(osNode.controllers())
                 .authentication(osNode.authentication())
-                .endPoint(osNode.endPoint());
+                .endPoint(osNode.endPoint())
+                .sshAuthInfo(osNode.sshAuthInfo())
+                .datapathType(osNode.datapathType());
     }
 
     /**
@@ -395,6 +423,8 @@ public class DefaultOpenstackNode implements OpenstackNode {
         private Collection<ControllerInfo> controllers;
         private OpenstackAuth auth;
         private String endPoint;
+        private OpenstackSshAuth sshAuth;
+        private DatapathType datapathType = DatapathType.NORMAL;
 
         // private constructor not intended to use from external
         private Builder() {
@@ -432,7 +462,9 @@ public class DefaultOpenstackNode implements OpenstackNode {
                     phyIntfs,
                     controllers,
                     auth,
-                    endPoint);
+                    endPoint,
+                    sshAuth,
+                    datapathType);
         }
 
         @Override
@@ -506,6 +538,18 @@ public class DefaultOpenstackNode implements OpenstackNode {
         @Override
         public Builder endPoint(String endPoint) {
             this.endPoint = endPoint;
+            return this;
+        }
+
+        @Override
+        public Builder sshAuthInfo(OpenstackSshAuth sshAuth) {
+            this.sshAuth = sshAuth;
+            return this;
+        }
+
+        @Override
+        public Builder datapathType(DatapathType datapathType) {
+            this.datapathType = datapathType;
             return this;
         }
     }
