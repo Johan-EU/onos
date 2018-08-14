@@ -1,6 +1,7 @@
 COMPILE_DEPS = CORE_DEPS + JACKSON + KRYO + REST + CLI + [
     "//apps/dhcp/api:onos-apps-dhcp-api",
     "//core/store/serializers:onos-core-serializers",
+    "//pipelines/simplebng:onos-pipelines-simplebng",
 ]
 
 osgi_jar_with_tests(
